@@ -1,45 +1,36 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'login_page.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inisialisasi Supabase
+  await Supabase.initialize(
+    url: 'https://getipwvkqbhujoeqgxmz.supabase.co',
+    anonKey: 'sb_publishable_2RhYu4hdkHZOYwdaOYmHdg_W_YGMq87',
+  );
+
   runApp(const AplikasiTes());
 }
 
+// Instance global Supabase
+final supabase = Supabase.instance.client;
+
 class AplikasiTes extends StatelessWidget {
-  const AplikasiTes({super.key});
+  const AplikasiTes ({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false, 
-      home: Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center, 
-            children: [
-              const Text(
-                'Hai',
-                style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 30), 
-              ElevatedButton(
-                onPressed: () {
-                  // Perintah ini yang akan menutup aplikasi saat tombol ditekan
-                  SystemNavigator.pop(); 
-                },
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(80, 80), 
-                  shape: const CircleBorder(), 
-                ),
-                child: const Text(
-                  '1',
-                  style: TextStyle(fontSize: 24),
-                ),
-              ),
-            ],
-          ),
-        ),
+      debugShowCheckedModeBanner: false,
+      title: 'Aplikasi Chatatan',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
+      // Aplikasi akan langsung menampilkan LoginPage saat dibuka
+      home: const LoginPage(),
     );
   }
 }
