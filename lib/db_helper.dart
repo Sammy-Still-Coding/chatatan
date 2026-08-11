@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:image_picker/image_picker.dart';
@@ -526,9 +525,9 @@ class DbHelper {
   // LIBRARY - UPLOAD GENERAL FILE
   // ============================================================
 
-  Future<Map<String, dynamic>>
-      uploadLibraryFile({
-    required File file,
+  Future<Map<String, dynamic>> uploadLibraryFile({
+    required Uint8List bytes,
+    required String fileName,
     required String title,
     String? description,
     String sourceType = 'UPLOAD',
@@ -540,75 +539,66 @@ class DbHelper {
     final user = currentUser;
 
     if (user == null) {
-      throw Exception(
-        'User belum login.',
-      );
+      throw Exception('User belum login.');
     }
 
-    // ----------------------------------------------------------
+    // ============================================================
     // FILE INFO
-    // ----------------------------------------------------------
+    // ============================================================
 
-    final originalName =
-        p.basename(file.path);
+    final originalName = p.basename(fileName);
 
     var extension = p
-        .extension(file.path)
-        .replaceFirst(
-          '.',
-          '',
-        )
+        .extension(originalName)
+        .replaceFirst('.', '')
         .toLowerCase();
 
     if (extension == 'jpeg') {
       extension = 'jpg';
     }
 
-    final fileSize =
-        await file.length();
+    if (extension.isEmpty) {
+      throw Exception('Ekstensi file tidak ditemukan.');
+    }
 
-    // ----------------------------------------------------------
+    final fileSize = bytes.length;
+
+    // ============================================================
     // MIME TYPE
-    // ----------------------------------------------------------
+    // ============================================================
 
-    final mimeType =
-        _getMimeType(extension);
+    final mimeType = _getMimeType(extension);
 
-    // ----------------------------------------------------------
+    // ============================================================
     // CONTENT TYPE
-    // ----------------------------------------------------------
+    // ============================================================
 
     final finalContentType =
         contentType ??
-            _getContentType(
-              extension,
-              mimeType,
-            );
+        _getContentType(
+          extension,
+          mimeType,
+        );
 
-    // ----------------------------------------------------------
+    // ============================================================
     // STORAGE FOLDER
-    // ----------------------------------------------------------
+    // ============================================================
 
-    String storageFolder =
-        'documents';
+    String storageFolder = 'documents';
 
-    if (finalContentType ==
-        'IMAGE') {
+    if (finalContentType == 'IMAGE') {
       storageFolder = 'images';
-    } else if (finalContentType ==
-        'PDF') {
+    } else if (finalContentType == 'PDF') {
       storageFolder = 'pdfs';
-    } else if (sourceType ==
-        'AI_SCAN') {
+    } else if (sourceType == 'AI_SCAN') {
       storageFolder = 'scans';
     }
 
-    // ----------------------------------------------------------
+    // ============================================================
     // STORAGE PATH
-    // ----------------------------------------------------------
+    // ============================================================
 
-    final fileUuid =
-        const Uuid().v4();
+    final fileUuid = const Uuid().v4();
 
     final storagePath =
         'library/${user.id}/'
@@ -616,99 +606,82 @@ class DbHelper {
         '$fileUuid.$extension';
 
     try {
-      // ========================================================
-      // 1. UPLOAD KE STORAGE
-      // ========================================================
+      // ==========================================================
+      // 1. UPLOAD KE SUPABASE STORAGE
+      // ==========================================================
 
       await _client.storage
           .from('chatatan-files')
-          .upload(
+          .uploadBinary(
             storagePath,
-            file,
-            fileOptions:
-                FileOptions(
-              contentType:
-                  mimeType,
+            bytes,
+            fileOptions: FileOptions(
+              contentType: mimeType,
               upsert: false,
             ),
           );
 
-      // ========================================================
-      // 2. INSERT FILE METADATA
-      // ========================================================
+      // ==========================================================
+      // 2. INSERT KE TABLE files
+      // ==========================================================
 
-      final fileRecord =
-          await _client
-              .from('files')
-              .insert({
-        'uploaded_by':
-            user.id,
-        'storage_provider':
-            'SUPABASE',
-        'storage_path':
-            storagePath,
-        'original_name':
-            originalName,
-        'mime_type':
-            mimeType,
-        'extension':
-            extension,
-        'file_size':
-            fileSize,
-      }).select().single();
+      final fileRecord = await _client
+          .from('files')
+          .insert({
+            'uploaded_by': user.id,
+            'storage_provider': 'SUPABASE',
+            'storage_path': storagePath,
+            'original_name': originalName,
+            'mime_type': mimeType,
+            'extension': extension,
+            'file_size': fileSize,
+          })
+          .select()
+          .single();
 
-      final fileId =
-          fileRecord['id'];
+      final fileId = fileRecord['id'];
 
-      // ========================================================
-      // 3. INSERT LIBRARY ITEM
-      // ========================================================
+      // ==========================================================
+      // 3. INSERT KE TABLE library_items
+      // ==========================================================
 
-      final libraryRecord =
-          await _client
-              .from('library_items')
-              .insert({
-        'user_id':
-            user.id,
-        'folder_id':
-            folderId,
-        'category_id':
-            categoryId,
-        'title':
-            title,
-        'description':
-            description,
-        'source_type':
-            sourceType,
-        'content_type':
-            finalContentType,
-        'file_id':
-            fileId,
-        'ai_scan_id':
-            aiScanId,
-        'visibility':
-            'PRIVATE',
-        'is_favorite':
-            false,
-      }).select().single();
+      final libraryRecord = await _client
+          .from('library_items')
+          .insert({
+            'user_id': user.id,
+            'folder_id': folderId,
+            'category_id': categoryId,
+            'title': title,
+            'description': description,
+            'source_type': sourceType,
+            'content_type': finalContentType,
+            'file_id': fileId,
+            'ai_scan_id': aiScanId,
+            'visibility': 'PRIVATE',
+            'is_favorite': false,
+          })
+          .select()
+          .single();
+
+      // ==========================================================
+      // RETURN
+      // ==========================================================
 
       return {
-        'file':
-            fileRecord,
-        'library_item':
-            libraryRecord,
+        'file': fileRecord,
+        'library_item': libraryRecord,
       };
     } catch (e) {
-      // ========================================================
+      // ==========================================================
       // CLEANUP STORAGE
-      // ========================================================
+      // ==========================================================
 
       try {
         await _client.storage
             .from('chatatan-files')
             .remove([
-          storagePath,
-        ]);
+              storagePath,
+            ]);
       } catch (_) {
         // Jangan menutupi error utama
       }
