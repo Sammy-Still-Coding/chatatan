@@ -971,4 +971,120 @@ class DbHelper {
     // Default
     return 'DOCUMENT';
   }
+
+  // ============================================================
+  // PENCARIAN USER & PRIVATE CHAT
+  // ============================================================
+
+  /// 1. Cari user berdasarkan username/nama
+  Future<List<Map<String, dynamic>>> searchUsers(String query) async {
+    final user = currentUser;
+    if (user == null || query.trim().isEmpty) return [];
+
+    final response = await _client
+        .from('users')
+        .select('id, username, avatar_url')
+        .neq('id', user.id) // Jangan tampilkan diri sendiri
+        .ilike('username', '%${query.trim()}%')
+        .limit(10);
+
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// 2. Ambil ID percakapan PRIVATE yang ada, atau buat baru jika belum pernah chat
+  Future<int> getOrCreatePrivateConversation(String targetUserId) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+
+    // Cek membership user saat ini & target user
+    final myMemberships = await _client
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', user.id);
+
+    final targetMemberships = await _client
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', targetUserId);
+
+    final myIds = myMemberships.map((e) => e['conversation_id']).toSet();
+    final targetIds = targetMemberships.map((e) => e['conversation_id']).toSet();
+    final sharedConvIds = myIds.intersection(targetIds);
+
+    // Jika sudah ada ruang chat bersama
+    if (sharedConvIds.isNotEmpty) {
+      final existingPrivate = await _client
+          .from('conversations')
+          .select('id')
+          .inFilter('id', sharedConvIds.toList())
+          .eq('conversation_type', 'PRIVATE')
+          .maybeSingle();
+
+      if (existingPrivate != null) {
+        return existingPrivate['id'] as int;
+      }
+    }
+
+    // Jika belum ada, buat percakapan PRIVATE baru
+    final newConv = await _client.from('conversations').insert({
+      'conversation_type': 'PRIVATE',
+      'title': 'Private Chat',
+      'created_by' : user.id,
+    }).select('id').single();
+
+    final newConvId = newConv['id'] as int;
+
+    // Daftarkan kedua user ke conversation_members
+    await _client.from('conversation_members').insert([
+      {'conversation_id': newConvId, 'user_id': user.id},
+      {'conversation_id': newConvId, 'user_id': targetUserId},
+    ]);
+
+    return newConvId;
+  }
+
+  // ============================================================
+  // CHAT & COMMUNITY (TAMBAHAN UNTUK COMMUNITY CHAT)
+  // ============================================================
+
+  /// 1. Mengambil daftar semua percakapan/grup
+  Future<List<Map<String, dynamic>>> getConversations() async {
+    final response = await _client
+        .from('conversations')
+        .select('id, title, conversation_type, updated_at')
+        .order('updated_at', ascending: false);
+
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// 2. Stream Realtime pesan berdasarkan ID Percakapan
+  Stream<List<Map<String, dynamic>>> getMessagesStream(int conversationId) {
+    return _client
+        .from('messages')
+        .stream(primaryKey: ['id'])
+        .eq('conversation_id', conversationId)
+        .order('created_at', ascending: true);
+  }
+
+  /// 3. Mengirim pesan baru ke percakapan
+  Future<void> sendMessage({
+    required int conversationId,
+    required String content,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+
+    await _client.from('messages').insert({
+      'conversation_id': conversationId,
+      'sender_id': user.id,
+      'message_type': 'TEXT',
+      'content': content,
+      'status': 'SENT',
+    });
+
+    await _client
+        .from('conversations')
+        .update({'updated_at': DateTime.now().toIso8601String()})
+        .eq('id', conversationId);
+  }
 }
