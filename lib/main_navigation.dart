@@ -35,10 +35,7 @@ class _MainNavigationState extends State<MainNavigation> {
     return Scaffold(
       extendBody: true,
 
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _pages),
 
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
@@ -49,12 +46,12 @@ class _MainNavigationState extends State<MainNavigation> {
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
 
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.94),
+        color: Colors.white.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(28),
 
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 25,
             offset: const Offset(0, 8),
           ),
@@ -130,9 +127,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
               size: 24,
 
-              color: isSelected
-                  ? Colors.deepPurple
-                  : Colors.grey.shade500,
+              color: isSelected ? Colors.deepPurple : Colors.grey.shade500,
             ),
 
             const SizedBox(height: 4),
@@ -143,13 +138,9 @@ class _MainNavigationState extends State<MainNavigation> {
               style: TextStyle(
                 fontSize: 10,
 
-                fontWeight: isSelected
-                    ? FontWeight.w600
-                    : FontWeight.w400,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
 
-                color: isSelected
-                    ? Colors.deepPurple
-                    : Colors.grey.shade500,
+                color: isSelected ? Colors.deepPurple : Colors.grey.shade500,
               ),
             ),
           ],
@@ -182,14 +173,11 @@ class _MainNavigationState extends State<MainNavigation> {
                   color: Colors.deepPurple,
                   shape: BoxShape.circle,
 
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 5,
-                  ),
+                  border: Border.all(color: Colors.white, width: 5),
 
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.deepPurple.withOpacity(0.25),
+                      color: Colors.deepPurple.withValues(alpha: 0.25),
                       blurRadius: 15,
                       offset: const Offset(0, 6),
                     ),
@@ -211,9 +199,7 @@ class _MainNavigationState extends State<MainNavigation> {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
-                  color: isSelected
-                      ? Colors.deepPurple
-                      : Colors.grey.shade500,
+                  color: isSelected ? Colors.deepPurple : Colors.grey.shade500,
                 ),
               ),
             ],

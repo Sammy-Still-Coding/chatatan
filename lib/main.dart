@@ -9,7 +9,7 @@ Future<void> main() async {
 
   await Supabase.initialize(
     url: 'https://getipwvkqbhujoeqgxmz.supabase.co',
-    anonKey: 'sb_publishable_2RhYu4hdkHZOYwdaOYmHdg_W_YGMq87',
+    publishableKey: 'sb_publishable_2RhYu4hdkHZOYwdaOYmHdg_W_YGMq87',
   );
 
   runApp(const ChatatanApp());
@@ -24,10 +24,7 @@ class ChatatanApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'ChaTatan',
 
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.deepPurple,
-      ),
+      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.deepPurple),
 
       home: Supabase.instance.client.auth.currentSession != null
           ? const MainNavigation()
