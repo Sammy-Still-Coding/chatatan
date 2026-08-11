@@ -1087,4 +1087,95 @@ class DbHelper {
         .update({'updated_at': DateTime.now().toIso8601String()})
         .eq('id', conversationId);
   }
+
+  // ============================================================
+  // GRUB CHAT
+  // ============================================================
+
+  /// 1. Membuat Percakapan Grup Baru beserta Anggotanya
+  Future<int> createGroupConversation({
+    required String title,
+    required List<String> selectedUserIds,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login');
+
+    // Buat baris baru di tabel conversations (tipe GROUP)
+    final newConv = await _client.from('conversations').insert({
+      'conversation_type': 'GROUP',
+      'title': title,
+      'created_by': user.id,
+    }).select('id').single();
+
+    final int conversationId = newConv['id'] as int;
+
+    // Pastikan pembuat grup juga masuk ke daftar anggota (tanpa duplikat)
+    final Set<String> allMemberIds = {user.id, ...selectedUserIds};
+
+    // Format data untuk batch insert ke conversation_members
+    final membersData = allMemberIds.map((userId) => {
+      'conversation_id': conversationId,
+      'user_id': userId,
+    }).toList();
+
+    await _client.from('conversation_members').insert(membersData);
+
+    return conversationId;
+  }
+
+  /// 2. Mengambil Daftar Grup yang Diikuti User
+  Future<List<Map<String, dynamic>>> getGroupConversations() async {
+    final user = currentUser;
+    if (user == null) return [];
+
+    final response = await _client
+        .from('conversation_members')
+        .select('''
+          conversation:conversations!inner (
+            id,
+            title,
+            conversation_type,
+            created_at,
+            updated_at,
+            conversation_members ( count )
+          )
+        ''')
+        .eq('user_id', user.id)
+        .eq('conversations.conversation_type', 'GROUP');
+
+    List<Map<String, dynamic>> groups = [];
+    for (var item in (response as List)) {
+      if (item['conversation'] != null) {
+        groups.add(Map<String, dynamic>.from(item['conversation']));
+      }
+    }
+
+    return groups;
+  }
+  
+  Future<String> getFileSignedUrl(int fileId) async {
+    final response = await _client
+        .from('files')
+        .select('storage_path')
+        .eq('id', fileId)
+        .single();
+
+    final storagePath =
+        response['storage_path']?.toString();
+
+    if (storagePath == null || storagePath.isEmpty) {
+      throw Exception(
+        'Storage path file tidak ditemukan',
+      );
+    }
+
+    final signedUrl = await _client.storage
+        .from('chatatan-files')
+        .createSignedUrl(
+          storagePath,
+          60 * 60,
+        );
+
+    return signedUrl;
+  }
 }

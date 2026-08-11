@@ -170,6 +170,180 @@ class _CommunityPageState extends State<CommunityPage> {
     );
   }
 
+  void _showCreateGroupModal() {
+    final TextEditingController groupNameController = TextEditingController();
+    List<Map<String, dynamic>> searchResults = [];
+    List<Map<String, dynamic>> selectedUsers = [];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                top: 20, left: 16, right: 16,
+              ),
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.75,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Buat Grup Baru',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    // Input Nama Grup
+                    TextField(
+                      controller: groupNameController,
+                      decoration: InputDecoration(
+                        labelText: 'Nama Grup',
+                        hintText: 'Contoh: Study Group OOP',
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // Chip Anggota Terpilih
+                    if (selectedUsers.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 6,
+                        children: selectedUsers.map((u) {
+                          return Chip(
+                            label: Text(u['username'] ?? 'User'),
+                            onDeleted: () {
+                              setModalState(() {
+                                selectedUsers.removeWhere((item) => item['id'] == u['id']);
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+
+                    // Input Cari User untuk Ditambah ke Grup
+                    TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Cari & pilih anggota...',
+                        prefixIcon: const Icon(Icons.search),
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (val) async {
+                        if (val.trim().isEmpty) {
+                          setModalState(() => searchResults = []);
+                          return;
+                        }
+                        final results = await _dbHelper.searchUsers(val);
+                        setModalState(() => searchResults = results);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+
+                    // List Hasil Pencarian
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: searchResults.length,
+                        itemBuilder: (context, index) {
+                          final u = searchResults[index];
+                          final isSelected = selectedUsers.any((item) => item['id'] == u['id']);
+                          return ListTile(
+                            title: Text(u['username'] ?? 'User'),
+                            trailing: Icon(
+                              isSelected ? Icons.check_circle : Icons.add_circle_outline,
+                              color: isSelected ? Colors.green : Colors.grey,
+                            ),
+                            onTap: () {
+                              setModalState(() {
+                                if (isSelected) {
+                                  selectedUsers.removeWhere((item) => item['id'] == u['id']);
+                                } else {
+                                  selectedUsers.add(u);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+
+                    // Tombol Submit Buat Grup
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6C63FF),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () async {
+                          final title = groupNameController.text.trim();
+                          if (title.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Nama grup tidak boleh kosong')),
+                            );
+                            return;
+                          }
+
+                          final selectedIds = selectedUsers.map((u) => u['id'].toString()).toList();
+                          
+                          Navigator.pop(context); // Tutup modal
+
+                          try {
+                            final convId = await _dbHelper.createGroupConversation(
+                              title: title,
+                              selectedUserIds: selectedIds,
+                            );
+
+                            if (mounted) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CommunityChatPage(
+                                    conversationId: convId,
+                                    title: title,
+                                  ),
+                                ),
+                              );
+                              setState(() {}); // Refresh UI
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Gagal membuat grup: $e')),
+                              );
+                            }
+                          }
+                        },
+                        child: const Text('Buat Grup', style: TextStyle(color: Colors.white, fontSize: 16)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   /// Membuka atau membuat percakapan pribadi
   Future<void> _openPrivateChat(String targetUserId, String title) async {
     try {
@@ -237,7 +411,13 @@ class _CommunityPageState extends State<CommunityPage> {
                   // Tombol Plus (+) untuk cari/buat chat baru
                   _buildIconButton(
                     icon: Icons.add,
-                    onTap: _showSearchUserModal,
+                    onTap: () {
+                      if (_selectedTabIndex == 2) {
+                        _showSearchUserModal(); // Jika di tab Chats -> Cari User Private
+                      } else if (_selectedTabIndex == 0) {
+                        _showCreateGroupModal(); // Jika di tab Groups -> Buat Grup Baru
+                      }
+                    },
                   ),
                 ],
               ),
@@ -252,12 +432,9 @@ class _CommunityPageState extends State<CommunityPage> {
             Expanded(
               child: _selectedTabIndex == 2
                   ? _buildChatsList()
-                  : Center(
-                      child: Text(
-                        _selectedTabIndex == 0 ? 'Halaman Groups' : 'Halaman Forum',
-                        style: const TextStyle(color: Colors.grey, fontSize: 16),
-                      ),
-                    ),
+                  : _selectedTabIndex == 0
+                      ? _buildGroupsList() // Tampilkan daftar grup
+                      : const Center(child: Text('Halaman Forum')),
             ),
           ],
         ),
@@ -280,6 +457,66 @@ class _CommunityPageState extends State<CommunityPage> {
           child: Icon(icon, color: const Color(0xFF6C63FF), size: 22),
         ),
       ),
+    );
+  }
+
+  Widget _buildGroupsList() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _dbHelper.getGroupConversations(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        final groups = snapshot.data ?? [];
+
+        if (groups.isEmpty) {
+          return const Center(
+            child: Text(
+              'Belum ada grup.\nTekan tombol + untuk membuat grup baru!',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          itemCount: groups.length,
+          itemBuilder: (context, index) {
+            final group = groups[index];
+            final memberCount = (group['conversation_members'] as List?)?.first['count'] ?? 1;
+
+            return Card(
+              elevation: 0,
+              margin: const EdgeInsets.only(bottom: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: const Color(0xFFEEECFF),
+                  child: const Icon(Icons.groups, color: Color(0xFF6C63FF)),
+                ),
+                title: Text(
+                  group['title'] ?? 'Grup',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text('$memberCount members'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CommunityChatPage(
+                        conversationId: group['id'],
+                        title: group['title'] ?? 'Grup',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
