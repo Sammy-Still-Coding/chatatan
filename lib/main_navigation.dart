@@ -15,19 +15,23 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  final GlobalKey<LibraryPageState> _libraryKey = GlobalKey<LibraryPageState>();
 
-  final List<Widget> _pages = const [
-    HomePage(),
-    LibraryPage(),
-    ScanPage(),
-    CommunityPage(),
-    ProfilePage(),
+  late final List<Widget> _pages = [
+    const HomePage(),
+    LibraryPage(key: _libraryKey),
+    const ScanPage(),
+    const CommunityPage(),
+    const ProfilePage(),
   ];
 
   void _onItemTapped(int index) {
     setState(() {
       _currentIndex = index;
     });
+    if (index == 1) {
+      _libraryKey.currentState?.refreshLibrary();
+    }
   }
 
   @override

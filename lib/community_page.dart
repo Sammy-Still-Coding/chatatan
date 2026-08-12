@@ -3,6 +3,7 @@ import 'db_helper.dart';
 import 'community_chat_page.dart';
 import 'create_forum_modal.dart';
 import 'forum_tab.dart';
+import 'ai_chat_page.dart';
 
 class CommunityPage extends StatefulWidget {
   const CommunityPage({super.key});
@@ -13,9 +14,9 @@ class CommunityPage extends StatefulWidget {
 
 class _CommunityPageState extends State<CommunityPage> {
   final DbHelper _dbHelper = DbHelper();
-  
-  // 0: Groups, 1: Forum, 2: Chats (default dipilih Chats)
-  int _selectedTabIndex = 2; 
+
+  // 0: Groups, 1: Forum, 2: Chats. Forum menjadi halaman Community default.
+  int _selectedTabIndex = 1;
   bool _isLoading = false;
   List<Map<String, dynamic>> _recentChats = [];
 
@@ -35,9 +36,9 @@ class _CommunityPageState extends State<CommunityPage> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal memuat pesan: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal memuat pesan: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -90,7 +91,10 @@ class _CommunityPageState extends State<CommunityPage> {
                     autofocus: true,
                     decoration: InputDecoration(
                       hintText: 'Ketik nama / username...',
-                      prefixIcon: const Icon(Icons.search, color: Color(0xFF6C63FF)),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: Color(0xFF6C63FF),
+                      ),
                       filled: true,
                       fillColor: Colors.grey.shade100,
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
@@ -134,11 +138,16 @@ class _CommunityPageState extends State<CommunityPage> {
                           final avatarUrl = targetUser['avatar_url'];
 
                           return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 4,
+                            ),
                             leading: CircleAvatar(
                               radius: 22,
                               backgroundColor: _getAvatarColor(username),
-                              backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                              backgroundImage: avatarUrl != null
+                                  ? NetworkImage(avatarUrl)
+                                  : null,
                               child: avatarUrl == null
                                   ? Text(
                                       _getInitials(username),
@@ -151,10 +160,17 @@ class _CommunityPageState extends State<CommunityPage> {
                             ),
                             title: Text(
                               username,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                            subtitle: const Text('Klik untuk mulai chat pribadi'),
-                            trailing: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF6C63FF)),
+                            subtitle: const Text(
+                              'Klik untuk mulai chat pribadi',
+                            ),
+                            trailing: const Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              color: Color(0xFF6C63FF),
+                            ),
                             onTap: () {
                               Navigator.pop(context); // Tutup modal
                               _openPrivateChat(targetUser['id'], username);
@@ -174,7 +190,8 @@ class _CommunityPageState extends State<CommunityPage> {
 
   void _openCreateForumModal() async {
     // Hanya jalankan jika tab aktif saat ini adalah Forum (misal index 1)
-    if (_selectedTabIndex == 1) { // Sesuaikan '_selectedTabIndex' dengan nama variabel index tab di kodemu
+    if (_selectedTabIndex == 1) {
+      // Sesuaikan '_selectedTabIndex' dengan nama variabel index tab di kodemu
       final isCreated = await showModalBottomSheet<bool>(
         context: context,
         isScrollControlled: true,
@@ -205,7 +222,9 @@ class _CommunityPageState extends State<CommunityPage> {
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-                top: 20, left: 16, right: 16,
+                top: 20,
+                left: 16,
+                right: 16,
               ),
               child: SizedBox(
                 height: MediaQuery.of(context).size.height * 0.75,
@@ -214,7 +233,10 @@ class _CommunityPageState extends State<CommunityPage> {
                   children: [
                     const Text(
                       'Buat Grup Baru',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     // Input Nama Grup
@@ -232,7 +254,7 @@ class _CommunityPageState extends State<CommunityPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    
+
                     // Chip Anggota Terpilih
                     if (selectedUsers.isNotEmpty) ...[
                       Wrap(
@@ -242,7 +264,9 @@ class _CommunityPageState extends State<CommunityPage> {
                             label: Text(u['username'] ?? 'User'),
                             onDeleted: () {
                               setModalState(() {
-                                selectedUsers.removeWhere((item) => item['id'] == u['id']);
+                                selectedUsers.removeWhere(
+                                  (item) => item['id'] == u['id'],
+                                );
                               });
                             },
                           );
@@ -280,17 +304,23 @@ class _CommunityPageState extends State<CommunityPage> {
                         itemCount: searchResults.length,
                         itemBuilder: (context, index) {
                           final u = searchResults[index];
-                          final isSelected = selectedUsers.any((item) => item['id'] == u['id']);
+                          final isSelected = selectedUsers.any(
+                            (item) => item['id'] == u['id'],
+                          );
                           return ListTile(
                             title: Text(u['username'] ?? 'User'),
                             trailing: Icon(
-                              isSelected ? Icons.check_circle : Icons.add_circle_outline,
+                              isSelected
+                                  ? Icons.check_circle
+                                  : Icons.add_circle_outline,
                               color: isSelected ? Colors.green : Colors.grey,
                             ),
                             onTap: () {
                               setModalState(() {
                                 if (isSelected) {
-                                  selectedUsers.removeWhere((item) => item['id'] == u['id']);
+                                  selectedUsers.removeWhere(
+                                    (item) => item['id'] == u['id'],
+                                  );
                                 } else {
                                   selectedUsers.add(u);
                                 }
@@ -308,26 +338,33 @@ class _CommunityPageState extends State<CommunityPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF6C63FF),
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         onPressed: () async {
                           final title = groupNameController.text.trim();
                           if (title.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Nama grup tidak boleh kosong')),
+                              const SnackBar(
+                                content: Text('Nama grup tidak boleh kosong'),
+                              ),
                             );
                             return;
                           }
 
-                          final selectedIds = selectedUsers.map((u) => u['id'].toString()).toList();
-                          
+                          final selectedIds = selectedUsers
+                              .map((u) => u['id'].toString())
+                              .toList();
+
                           Navigator.pop(context); // Tutup modal
 
                           try {
-                            final convId = await _dbHelper.createGroupConversation(
-                              title: title,
-                              selectedUserIds: selectedIds,
-                            );
+                            final convId = await _dbHelper
+                                .createGroupConversation(
+                                  title: title,
+                                  selectedUserIds: selectedIds,
+                                );
 
                             if (mounted) {
                               Navigator.push(
@@ -336,6 +373,7 @@ class _CommunityPageState extends State<CommunityPage> {
                                   builder: (_) => CommunityChatPage(
                                     conversationId: convId,
                                     title: title,
+                                    isGroup: true,
                                   ),
                                 ),
                               );
@@ -344,12 +382,17 @@ class _CommunityPageState extends State<CommunityPage> {
                           } catch (e) {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Gagal membuat grup: $e')),
+                                SnackBar(
+                                  content: Text('Gagal membuat grup: $e'),
+                                ),
                               );
                             }
                           }
                         },
-                        child: const Text('Buat Grup', style: TextStyle(color: Colors.white, fontSize: 16)),
+                        child: const Text(
+                          'Buat Grup',
+                          style: TextStyle(color: Colors.white, fontSize: 16),
+                        ),
                       ),
                     ),
                   ],
@@ -372,7 +415,9 @@ class _CommunityPageState extends State<CommunityPage> {
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
 
-      final conversationId = await _dbHelper.getOrCreatePrivateConversation(targetUserId);
+      final conversationId = await _dbHelper.getOrCreatePrivateConversation(
+        targetUserId,
+      );
 
       if (mounted) {
         Navigator.pop(context); // Tutup loading dialog
@@ -380,10 +425,8 @@ class _CommunityPageState extends State<CommunityPage> {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => CommunityChatPage(
-              conversationId: conversationId,
-              title: title,
-            ),
+            builder: (_) =>
+                CommunityChatPage(conversationId: conversationId, title: title),
           ),
         );
 
@@ -392,9 +435,9 @@ class _CommunityPageState extends State<CommunityPage> {
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // Tutup loading dialog
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal membuat percakapan: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal membuat percakapan: $e')));
       }
     }
   }
@@ -402,7 +445,9 @@ class _CommunityPageState extends State<CommunityPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FF), // Warna background soft lavender/putih
+      backgroundColor: const Color(
+        0xFFF5F6FF,
+      ), // Warna background soft lavender/putih
       body: SafeArea(
         child: Column(
           children: [
@@ -453,8 +498,8 @@ class _CommunityPageState extends State<CommunityPage> {
               child: _selectedTabIndex == 2
                   ? _buildChatsList()
                   : _selectedTabIndex == 0
-                      ? _buildGroupsList() // Tampilkan daftar grup
-                      : const ForumTab()
+                  ? _buildGroupsList() // Tampilkan daftar grup
+                  : const ForumTab(),
             ),
           ],
         ),
@@ -463,7 +508,10 @@ class _CommunityPageState extends State<CommunityPage> {
   }
 
   /// Widget Tombol Ikon Lingkaran Putih di Header
-  Widget _buildIconButton({required IconData icon, required VoidCallback onTap}) {
+  Widget _buildIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
     return Material(
       color: Colors.white,
       shape: const CircleBorder(),
@@ -487,7 +535,7 @@ class _CommunityPageState extends State<CommunityPage> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        
+
         final groups = snapshot.data ?? [];
 
         if (groups.isEmpty) {
@@ -505,12 +553,15 @@ class _CommunityPageState extends State<CommunityPage> {
           itemCount: groups.length,
           itemBuilder: (context, index) {
             final group = groups[index];
-            final memberCount = (group['conversation_members'] as List?)?.first['count'] ?? 1;
+            final memberCount =
+                (group['conversation_members'] as List?)?.first['count'] ?? 1;
 
             return Card(
               elevation: 0,
               margin: const EdgeInsets.only(bottom: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: ListTile(
                 leading: CircleAvatar(
                   backgroundColor: const Color(0xFFEEECFF),
@@ -521,16 +572,18 @@ class _CommunityPageState extends State<CommunityPage> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text('$memberCount members'),
-                onTap: () {
-                  Navigator.push(
+                onTap: () async {
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => CommunityChatPage(
                         conversationId: group['id'],
                         title: group['title'] ?? 'Grup',
+                        isGroup: true,
                       ),
                     ),
                   );
+                  if (mounted) setState(() {});
                 },
               ),
             );
@@ -617,17 +670,26 @@ class _CommunityPageState extends State<CommunityPage> {
             ..._recentChats.map((chatData) {
               final conversation = chatData['conversation'] ?? {};
               final otherUser = chatData['other_user'] ?? {};
+              final settings = chatData['settings'] ?? {};
               final lastMessage = chatData['last_message'];
 
-              final title = conversation['conversation_type'] == 'PRIVATE'
+              final defaultTitle =
+                  conversation['conversation_type'] == 'PRIVATE'
                   ? (otherUser['username'] ?? 'User')
                   : (conversation['title'] ?? 'Grup Chat');
+              final title =
+                  settings['nickname']?.toString().trim().isNotEmpty == true
+                  ? settings['nickname'].toString()
+                  : defaultTitle;
 
               final avatarUrl = otherUser['avatar_url'];
-              final messageContent = lastMessage != null ? lastMessage['content'] ?? '' : 'Belum ada pesan';
-              
+              final messageContent = lastMessage != null
+                  ? lastMessage['content'] ?? ''
+                  : 'Belum ada pesan';
+
               // Format Waktu
-              final createdAt = lastMessage != null && lastMessage['created_at'] != null
+              final createdAt =
+                  lastMessage != null && lastMessage['created_at'] != null
                   ? DateTime.tryParse(lastMessage['created_at'])
                   : null;
               final timeStr = createdAt != null
@@ -639,6 +701,7 @@ class _CommunityPageState extends State<CommunityPage> {
                 lastMessage: messageContent,
                 timeStr: timeStr,
                 avatarUrl: avatarUrl,
+                isPinned: settings['is_pinned'] == true,
                 onTap: () async {
                   await Navigator.push(
                     context,
@@ -671,7 +734,11 @@ class _CommunityPageState extends State<CommunityPage> {
             CircleAvatar(
               radius: 24,
               backgroundColor: const Color(0xFF6C63FF),
-              child: const Icon(Icons.smart_toy_outlined, color: Colors.white, size: 26),
+              child: const Icon(
+                Icons.smart_toy_outlined,
+                color: Colors.white,
+                size: 26,
+              ),
             ),
             Positioned(
               right: 0,
@@ -705,7 +772,11 @@ class _CommunityPageState extends State<CommunityPage> {
               ),
               child: const Text(
                 'AI',
-                style: TextStyle(fontSize: 10, color: Color(0xFF6C63FF), fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Color(0xFF6C63FF),
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
@@ -716,12 +787,14 @@ class _CommunityPageState extends State<CommunityPage> {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 13, color: Colors.black54),
         ),
-        trailing: const Text('Now', style: TextStyle(fontSize: 12, color: Colors.grey)),
-        onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Fitur ChaTatan AI akan segera hadir!')),
-          );
-        },
+        trailing: const Text(
+          'Now',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AiChatPage()),
+        ),
       ),
     );
   }
@@ -732,6 +805,7 @@ class _CommunityPageState extends State<CommunityPage> {
     required String lastMessage,
     required String timeStr,
     String? avatarUrl,
+    bool isPinned = false,
     required VoidCallback onTap,
   }) {
     return Card(
@@ -748,7 +822,10 @@ class _CommunityPageState extends State<CommunityPage> {
           child: avatarUrl == null
               ? Text(
                   _getInitials(title),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 )
               : null,
         ),
@@ -762,9 +839,21 @@ class _CommunityPageState extends State<CommunityPage> {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 13, color: Colors.black54),
         ),
-        trailing: Text(
-          timeStr,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (isPinned)
+              const Icon(
+                Icons.push_pin_outlined,
+                size: 15,
+                color: Color(0xFF6C63FF),
+              ),
+            Text(
+              timeStr,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
         ),
         onTap: onTap,
       ),

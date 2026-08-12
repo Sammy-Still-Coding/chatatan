@@ -81,8 +81,13 @@ class _ForumTabState extends State<ForumTab> {
     final postId = post['id'] as int?;
     if (postId == null) return;
     try {
-      await _dbHelper.setForumPostVote(postId, reaction);
-      await _fetchPosts();
+      final result = await _dbHelper.setForumPostVote(postId, reaction);
+      if (!mounted) return;
+      setState(() {
+        _posts[index]['like_count'] = result['like_count'] ?? 0;
+        _posts[index]['dislike_count'] = result['dislike_count'] ?? 0;
+        _postVotes[postId] = result['reaction']?.toString();
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(

@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:http/http.dart' as http;
+import 'package:public_file_saver/public_file_saver.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'db_helper.dart';
 
@@ -11,10 +13,10 @@ class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
 
   @override
-  State<LibraryPage> createState() => _LibraryPageState();
+  State<LibraryPage> createState() => LibraryPageState();
 }
 
-class _LibraryPageState extends State<LibraryPage> {
+class LibraryPageState extends State<LibraryPage> {
   final DbHelper _dbHelper = DbHelper();
   final TextEditingController _searchController = TextEditingController();
 
@@ -38,6 +40,11 @@ class _LibraryPageState extends State<LibraryPage> {
   void initState() {
     super.initState();
 
+    _loadLibrary();
+  }
+
+  /// Dipanggil oleh navigasi utama saat tab Library kembali dibuka.
+  void refreshLibrary() {
     _loadLibrary();
   }
 
@@ -104,6 +111,7 @@ class _LibraryPageState extends State<LibraryPage> {
     }
 
     try {
+      await _dbHelper.ensureDefaultLibraryFolders();
       final results = await Future.wait([
         _dbHelper.getLibraryItems(),
         _dbHelper.getLibraryFolders(),
@@ -853,6 +861,89 @@ class _LibraryPageState extends State<LibraryPage> {
     }
   }
 
+  Future<void> _moveItemToFolder(Map<String, dynamic> item) async {
+    final selected = await showModalBottomSheet<int?>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Pindahkan ke folder')),
+            ListTile(
+              leading: const Icon(Icons.folder_off_outlined),
+              title: const Text('Tanpa folder'),
+              onTap: () => Navigator.pop(sheetContext),
+            ),
+            ..._folders.map(
+              (folder) => ListTile(
+                leading: const Icon(Icons.folder_outlined),
+                title: Text(folder['name']?.toString() ?? 'Folder'),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  int.tryParse(folder['id'].toString()),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    final itemId = _itemId(item);
+    if (itemId == null) return;
+    try {
+      await _dbHelper.moveLibraryItem(itemId, folderId: selected);
+      await _loadLibrary();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal memindahkan file: $e')));
+    }
+  }
+
+  Future<void> _openFolder(Map<String, dynamic> folder) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LibraryFolderPage(
+          folder: folder,
+          onItemAction: _handleFolderItemAction,
+        ),
+      ),
+    );
+    if (mounted) await _loadLibrary();
+  }
+
+  Future<void> _handleFolderItemAction(
+    String action,
+    Map<String, dynamic> item,
+  ) async {
+    switch (action) {
+      case 'open':
+        _openItem(item);
+        break;
+      case 'download':
+        await _downloadItem(item);
+        break;
+      case 'move':
+        await _moveItemToFolder(item);
+        break;
+      case 'details':
+        _showItemInfo(item);
+        break;
+      case 'favorite':
+        await _toggleFavorite(item);
+        break;
+      case 'edit':
+        await _editItem(item);
+        break;
+      case 'delete':
+        await _deleteItem(item);
+        break;
+    }
+  }
+
   void _openItem(Map<String, dynamic> item) {
     final contentType = item['content_type']?.toString().toUpperCase();
     final id = _itemId(item);
@@ -882,7 +973,77 @@ class _LibraryPageState extends State<LibraryPage> {
       return;
     }
 
-    _showItemInfo(item);
+    _openWithDeviceApp(item);
+  }
+
+  Map<String, dynamic>? _fileForItem(Map<String, dynamic> item) {
+    final files = item['files'];
+    if (files is Map) return Map<String, dynamic>.from(files);
+    if (files is List && files.isNotEmpty && files.first is Map) {
+      return Map<String, dynamic>.from(files.first as Map);
+    }
+    return null;
+  }
+
+  Future<String> _signedUrlForItem(Map<String, dynamic> item) async {
+    final file = _fileForItem(item);
+    final storagePath = file?['storage_path']?.toString();
+    if (storagePath == null || storagePath.isEmpty) {
+      throw Exception('File belum tersedia.');
+    }
+    return _dbHelper.getLibraryFileUrl(storagePath);
+  }
+
+  Future<void> _openWithDeviceApp(Map<String, dynamic> item) async {
+    try {
+      final url = await _signedUrlForItem(item);
+      final opened = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) {
+        throw Exception('Tidak ada aplikasi untuk membuka file ini.');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal membuka file: $e')));
+    }
+  }
+
+  Future<void> _downloadItem(Map<String, dynamic> item) async {
+    try {
+      final file = _fileForItem(item);
+      final fileName =
+          file?['original_name']?.toString().trim().isNotEmpty == true
+          ? file!['original_name'].toString()
+          : item['title']?.toString() ?? 'file-chatatan';
+      final mimeType =
+          file?['mime_type']?.toString() ?? 'application/octet-stream';
+      final url = await _signedUrlForItem(item);
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Server mengembalikan status ${response.statusCode}.');
+      }
+      final saved = await PublicFileSaver().saveBytes(
+        bytes: response.bodyBytes,
+        fileName: fileName,
+        mimeType: mimeType,
+      );
+      if (saved == null || !saved.isSuccess) {
+        throw Exception('Unduhan dibatalkan atau gagal disimpan.');
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$fileName berhasil diunduh ke perangkat.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal mengunduh file: $e')));
+    }
   }
 
   // ============================================================
@@ -985,6 +1146,15 @@ class _LibraryPageState extends State<LibraryPage> {
               case 'open':
                 _openItem(item);
                 break;
+              case 'details':
+                _showItemInfo(item);
+                break;
+              case 'download':
+                _downloadItem(item);
+                break;
+              case 'move':
+                _moveItemToFolder(item);
+                break;
               case 'favorite':
                 _toggleFavorite(item);
                 break;
@@ -1001,7 +1171,28 @@ class _LibraryPageState extends State<LibraryPage> {
               value: 'open',
               child: ListTile(
                 leading: Icon(Icons.visibility_outlined),
-                title: Text('Buka / detail'),
+                title: Text('Buka file'),
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'download',
+              child: ListTile(
+                leading: Icon(Icons.download_outlined),
+                title: Text('Unduh ke perangkat'),
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'move',
+              child: ListTile(
+                leading: Icon(Icons.drive_file_move_outline),
+                title: Text('Pindahkan ke folder'),
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'details',
+              child: ListTile(
+                leading: Icon(Icons.info_outline),
+                title: Text('Lihat detail'),
               ),
             ),
             PopupMenuItem(
@@ -1205,10 +1396,7 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   Widget _buildFilterBar() {
-    final hasFilters =
-        _selectedFolderId != null ||
-        _selectedCategoryId != null ||
-        _favoritesOnly;
+    final hasFilters = _selectedCategoryId != null || _favoritesOnly;
     return SizedBox(
       height: 46,
       child: ListView(
@@ -1220,16 +1408,6 @@ class _LibraryPageState extends State<LibraryPage> {
             selected: _favoritesOnly,
             avatar: const Icon(Icons.star_outline, size: 18),
             onSelected: (value) => setState(() => _favoritesOnly = value),
-          ),
-          const SizedBox(width: 8),
-          ActionChip(
-            avatar: const Icon(Icons.folder_outlined, size: 18),
-            label: Text(
-              _selectedFolderId == null
-                  ? 'Semua folder'
-                  : _nameForId(_folders, _selectedFolderId),
-            ),
-            onPressed: _showFolderFilter,
           ),
           const SizedBox(width: 8),
           ActionChip(
@@ -1247,7 +1425,6 @@ class _LibraryPageState extends State<LibraryPage> {
               avatar: const Icon(Icons.filter_alt_off_outlined, size: 18),
               label: const Text('Reset'),
               onPressed: () => setState(() {
-                _selectedFolderId = null;
                 _selectedCategoryId = null;
                 _favoritesOnly = false;
               }),
@@ -1258,39 +1435,102 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  Future<void> _showFolderFilter() async {
-    final selected = await showModalBottomSheet<int?>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const ListTile(title: Text('Pilih folder')),
-            ListTile(
-              leading: const Icon(Icons.folder_off_outlined),
-              title: const Text('Semua folder'),
-              onTap: () => Navigator.pop(sheetContext),
-            ),
-            ..._folders.map(
-              (folder) => ListTile(
-                leading: const Icon(Icons.folder_outlined),
-                title: Text(folder['name']?.toString() ?? 'Folder'),
-                trailing:
-                    folder['id']?.toString() == _selectedFolderId?.toString()
-                    ? const Icon(Icons.check, color: Colors.deepPurple)
-                    : null,
-                onTap: () => Navigator.pop(
-                  sheetContext,
-                  int.tryParse(folder['id'].toString()),
-                ),
+  Widget _buildFolderCarousel() {
+    final query = _searchQuery.trim().toLowerCase();
+    final folders = _folders.where((folder) {
+      return query.isEmpty ||
+          (folder['name']?.toString().toLowerCase() ?? '').contains(query);
+    }).toList();
+    if (folders.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 108,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text(
+              'FOLDERS',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF5D6B85),
               ),
             ),
-          ],
-        ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: folders.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
+              itemBuilder: (context, index) {
+                final folder = folders[index];
+                final folderId = folder['id'];
+                final itemCount = _items
+                    .where(
+                      (item) =>
+                          item['folder_id'].toString() == folderId.toString(),
+                    )
+                    .length;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(18),
+                  onTap: () => _openFolder(folder),
+                  child: Container(
+                    width: 178,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE9E7F4)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEEE9FF),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.folder_outlined,
+                            color: Color(0xFF6C5CE7),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                folder['name']?.toString() ?? 'Folder',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '$itemCount file',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
-    if (!mounted) return;
-    setState(() => _selectedFolderId = selected);
   }
 
   Future<void> _showCategoryFilter() async {
@@ -1554,6 +1794,7 @@ class _LibraryPageState extends State<LibraryPage> {
             ),
           ),
         ),
+        _buildFolderCarousel(),
         _buildFilterBar(),
         Expanded(
           child: _isLoading
@@ -1590,6 +1831,312 @@ class _LibraryPageState extends State<LibraryPage> {
                 ),
         ),
       ],
+    );
+  }
+}
+
+class LibraryFolderPage extends StatefulWidget {
+  const LibraryFolderPage({
+    super.key,
+    required this.folder,
+    required this.onItemAction,
+  });
+
+  final Map<String, dynamic> folder;
+  final Future<void> Function(String action, Map<String, dynamic> item)
+  onItemAction;
+
+  @override
+  State<LibraryFolderPage> createState() => _LibraryFolderPageState();
+}
+
+class _LibraryFolderPageState extends State<LibraryFolderPage> {
+  final _dbHelper = DbHelper();
+  final _searchController = TextEditingController();
+  List<Map<String, dynamic>> _folders = [];
+  List<Map<String, dynamic>> _items = [];
+  bool _loading = true;
+  String _query = '';
+
+  int? get _folderId => int.tryParse(widget.folder['id'].toString());
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final folderId = _folderId;
+    if (folderId == null) return;
+    setState(() => _loading = true);
+    try {
+      final result = await Future.wait([
+        _dbHelper.getLibraryFoldersByParent(parentFolderId: folderId),
+        _dbHelper.getLibraryItems(folderId: folderId),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _folders = List<Map<String, dynamic>>.from(result[0]);
+        _items = List<Map<String, dynamic>>.from(result[1]);
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _createSubfolder() async {
+    final controller = TextEditingController();
+    final create = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Buat folder di dalam folder ini'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Nama folder'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Buat'),
+          ),
+        ],
+      ),
+    );
+    final name = controller.text.trim();
+    controller.dispose();
+    if (create != true || name.isEmpty || _folderId == null) return;
+    await _dbHelper.createLibraryFolder(name: name, parentFolderId: _folderId);
+    await _load();
+  }
+
+  Future<void> _openSubfolder(Map<String, dynamic> folder) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LibraryFolderPage(
+          folder: folder,
+          onItemAction: widget.onItemAction,
+        ),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  IconData _iconForItem(Map<String, dynamic> item) {
+    final type = item['content_type']?.toString().toUpperCase();
+    if (type == 'PDF') return Icons.picture_as_pdf_outlined;
+    if (type == 'IMAGE') return Icons.image_outlined;
+    return Icons.description_outlined;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.folder['name']?.toString() ?? 'Folder';
+    final query = _query.trim().toLowerCase();
+    final folders = _folders
+        .where(
+          (folder) =>
+              query.isEmpty ||
+              (folder['name']?.toString().toLowerCase() ?? '').contains(query),
+        )
+        .toList();
+    final items = _items.where((item) {
+      final file = item['files'];
+      final fileName = file is Map
+          ? file['original_name']?.toString().toLowerCase() ?? ''
+          : '';
+      return query.isEmpty ||
+          (item['title']?.toString().toLowerCase() ?? '').contains(query) ||
+          fileName.contains(query);
+    }).toList();
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F5FA),
+      appBar: AppBar(
+        title: Text(name),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Buat folder di sini',
+            onPressed: _createSubfolder,
+            icon: const Icon(Icons.create_new_folder_outlined),
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _query = value),
+                    decoration: InputDecoration(
+                      hintText: 'Cari folder atau file',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _load,
+                    child: folders.isEmpty && items.isEmpty
+                        ? ListView(
+                            children: const [
+                              SizedBox(height: 160),
+                              Icon(Icons.folder_open_outlined, size: 72),
+                              SizedBox(height: 16),
+                              Center(child: Text('Folder ini masih kosong')),
+                            ],
+                          )
+                        : GridView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 3,
+                                  mainAxisSpacing: 16,
+                                  crossAxisSpacing: 12,
+                                  childAspectRatio: .78,
+                                ),
+                            itemCount: folders.length + items.length,
+                            itemBuilder: (context, index) {
+                              if (index < folders.length) {
+                                final folder = folders[index];
+                                return InkWell(
+                                  borderRadius: BorderRadius.circular(14),
+                                  onTap: () => _openSubfolder(folder),
+                                  child: Column(
+                                    children: [
+                                      const Expanded(
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.folder_rounded,
+                                            size: 66,
+                                            color: Color(0xFFFFBE2E),
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        folder['name']?.toString() ?? 'Folder',
+                                        maxLines: 2,
+                                        textAlign: TextAlign.center,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                              final item = items[index - folders.length];
+                              return InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () => widget.onItemAction('open', item),
+                                child: Column(
+                                  children: [
+                                    Expanded(
+                                      child: Stack(
+                                        children: [
+                                          Center(
+                                            child: Icon(
+                                              _iconForItem(item),
+                                              size: 60,
+                                              color: const Color(0xFF6C5CE7),
+                                            ),
+                                          ),
+                                          Positioned(
+                                            top: 0,
+                                            right: -8,
+                                            child: PopupMenuButton<String>(
+                                              icon: const Icon(
+                                                Icons.more_vert,
+                                                size: 20,
+                                              ),
+                                              onSelected: (value) async {
+                                                await widget.onItemAction(
+                                                  value,
+                                                  item,
+                                                );
+                                                if (mounted) await _load();
+                                              },
+                                              itemBuilder: (_) => [
+                                                const PopupMenuItem(
+                                                  value: 'open',
+                                                  child: Text('Buka file'),
+                                                ),
+                                                const PopupMenuItem(
+                                                  value: 'download',
+                                                  child: Text(
+                                                    'Unduh ke perangkat',
+                                                  ),
+                                                ),
+                                                PopupMenuItem(
+                                                  value: 'move',
+                                                  child: Text(
+                                                    'Pindahkan ke folder',
+                                                  ),
+                                                ),
+                                                const PopupMenuItem(
+                                                  value: 'details',
+                                                  child: Text('Lihat detail'),
+                                                ),
+                                                PopupMenuItem(
+                                                  value: 'favorite',
+                                                  child: Text(
+                                                    item['is_favorite'] == true
+                                                        ? 'Hapus dari favorit'
+                                                        : 'Tambah favorit',
+                                                  ),
+                                                ),
+                                                const PopupMenuItem(
+                                                  value: 'edit',
+                                                  child: Text('Edit'),
+                                                ),
+                                                const PopupMenuItem(
+                                                  value: 'delete',
+                                                  child: Text('Hapus'),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Text(
+                                      item['title']?.toString() ?? 'File',
+                                      maxLines: 2,
+                                      textAlign: TextAlign.center,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

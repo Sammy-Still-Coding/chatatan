@@ -424,6 +424,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
+  open_filex:
+    dependency: "direct main"
+    description:
+      name: open_filex
+      sha256: "9976da61b6a72302cf3b1efbce259200cd40232643a467aac7370addf94d6900"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.7.0"
   passkeys_platform_interface:
     dependency: transitive
     description:
@@ -504,6 +512,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.9.1"
+  public_file_saver:
+    dependency: "direct main"
+    description:
+      name: public_file_saver
+      sha256: "1cfc42057125fe7860832797457c92e04c7f4b111743c7c8c40d603ccf84d9a4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
   realtime_client:
     dependency: transitive
     description:

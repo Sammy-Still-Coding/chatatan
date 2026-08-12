@@ -6,11 +6,13 @@ import 'db_helper.dart';
 class CommunityChatPage extends StatefulWidget {
   final dynamic conversationId;
   final String title;
+  final bool isGroup;
 
   const CommunityChatPage({
     super.key,
     required this.conversationId,
     required this.title,
+    this.isGroup = false,
   });
 
   @override
@@ -26,20 +28,162 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   final Map<String, String> _userCache = {};
   final Set<String> _loadingUserIds = {};
   bool _isUploading = false;
+  String _roomSubtitle = '';
+  bool _isPinned = false;
+  late String _roomTitle;
 
   int get _convIdInt => int.tryParse(widget.conversationId.toString()) ?? 0;
   String? get currentUserId => _supabase.auth.currentUser?.id;
 
   @override
   void dispose() {
+    _dbHelper.setMyPresence(false);
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _roomTitle = widget.title;
+    _dbHelper.setMyPresence(true);
+    _loadRoomInfo();
+  }
+
+  Future<void> _loadRoomInfo() async {
+    try {
+      final members = await _supabase
+          .from('conversation_members')
+          .select(
+            'user_id, user_presence(is_online, last_seen_at), conversation_member_settings(is_pinned)',
+          )
+          .eq('conversation_id', _convIdInt);
+      final other = members
+          .cast<Map<String, dynamic>>()
+          .where((member) => member['user_id']?.toString() != currentUserId)
+          .toList();
+      final own = members
+          .cast<Map<String, dynamic>>()
+          .where((member) => member['user_id']?.toString() == currentUserId)
+          .toList();
+      if (!mounted) return;
+      if (other.length == 1) {
+        final presence = other.first['user_presence'];
+        final online = presence is Map && presence['is_online'] == true;
+        final seen = presence is Map
+            ? DateTime.tryParse(presence['last_seen_at']?.toString() ?? '')
+            : null;
+        _roomSubtitle = online
+            ? 'Online'
+            : seen == null
+            ? 'Offline'
+            : 'Terakhir aktif ${_formatTime(seen)}';
+      } else {
+        _roomSubtitle = '${members.length} anggota';
+      }
+      final ownSettings = own.isEmpty
+          ? null
+          : own.first['conversation_member_settings'];
+      _isPinned = ownSettings is Map && ownSettings['is_pinned'] == true;
+      setState(() {});
+    } catch (_) {}
+  }
+
+  String _formatTime(DateTime value) {
+    final local = value.toLocal();
+    final now = DateTime.now();
+    if (local.year == now.year &&
+        local.month == now.month &&
+        local.day == now.day) {
+      return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    }
+    return '${local.day}/${local.month}/${local.year}';
+  }
+
+  Future<void> _togglePin() async {
+    try {
+      await _dbHelper.setConversationPinned(_convIdInt, !_isPinned);
+      if (mounted) setState(() => _isPinned = !_isPinned);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal mengatur pin: $e')));
+    }
+  }
+
+  Future<void> _setNickname() async {
+    final controller = TextEditingController(text: _roomTitle);
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Nama panggilan chat'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(hintText: 'Contoh: Teman kuliah'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+    if (save != true) {
+      controller.dispose();
+      return;
+    }
+    try {
+      await _dbHelper.setConversationNickname(_convIdInt, controller.text);
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nama panggilan disimpan.')),
+        );
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  Future<void> _renameGroup() async {
+    final controller = TextEditingController(text: widget.title);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Ubah nama grup'),
+        content: TextField(controller: controller, autofocus: true),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+    final title = controller.text.trim();
+    controller.dispose();
+    if (saved != true || title.isEmpty) return;
+    await _supabase
+        .from('conversations')
+        .update({'title': title})
+        .eq('id', _convIdInt);
+    if (!mounted) return;
+    setState(() => _roomTitle = title);
+  }
+
   /// Mengambil nama pengirim dari tabel users jika belum tersimpan di cache
   void _fetchSenderName(String senderId) {
-    if (_userCache.containsKey(senderId) || _loadingUserIds.contains(senderId)) return;
+    if (_userCache.containsKey(senderId) || _loadingUserIds.contains(senderId))
+      return;
 
     _loadingUserIds.add(senderId);
 
@@ -49,20 +193,23 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
         .eq('id', senderId)
         .maybeSingle()
         .then((response) {
-      if (mounted) {
-        setState(() {
-          _userCache[senderId] = response != null ? (response['username'] ?? 'User') : 'User';
-          _loadingUserIds.remove(senderId);
+          if (mounted) {
+            setState(() {
+              _userCache[senderId] = response != null
+                  ? (response['username'] ?? 'User')
+                  : 'User';
+              _loadingUserIds.remove(senderId);
+            });
+          }
+        })
+        .catchError((_) {
+          if (mounted) {
+            setState(() {
+              _userCache[senderId] = 'User';
+              _loadingUserIds.remove(senderId);
+            });
+          }
         });
-      }
-    }).catchError((_) {
-      if (mounted) {
-        setState(() {
-          _userCache[senderId] = 'User';
-          _loadingUserIds.remove(senderId);
-        });
-      }
-    });
   }
 
   /// Mengirim pesan teks biasa
@@ -89,9 +236,9 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal mengirim pesan: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal mengirim pesan: $e')));
       }
     }
   }
@@ -136,10 +283,9 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
       final path = 'chat_$_convIdInt/$fileName';
 
       // Upload ke Supabase Storage
-      await _supabase.storage.from('chat-files').uploadBinary(
-            path,
-            file.bytes!,
-          );
+      await _supabase.storage
+          .from('chat-files')
+          .uploadBinary(path, file.bytes!);
 
       // Ambil URL Publik
       final publicUrl = _supabase.storage.from('chat-files').getPublicUrl(path);
@@ -165,9 +311,9 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal mengunggah file: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal mengunggah file: $e')));
       }
     } finally {
       // 3. Reset kembali status uploading jika selesai / batal / error
@@ -195,7 +341,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.insert_drive_file, color: Colors.orange),
+                leading: const Icon(
+                  Icons.insert_drive_file,
+                  color: Colors.orange,
+                ),
                 title: const Text('Kirim File / Dokumen'),
                 onTap: () {
                   Navigator.pop(context);
@@ -206,6 +355,120 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _showRoomDetails({bool openMedia = false}) async {
+    final media = await _dbHelper.getConversationMedia(_convIdInt);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .72,
+          child: DefaultTabController(
+            length: 3,
+            initialIndex: openMedia ? 1 : 0,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: CircleAvatar(
+                    child: Text(_roomTitle.substring(0, 1).toUpperCase()),
+                  ),
+                  title: Text(
+                    _roomTitle,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    _roomSubtitle.isEmpty ? 'Info percakapan' : _roomSubtitle,
+                  ),
+                ),
+                const TabBar(
+                  tabs: [
+                    Tab(text: 'Info'),
+                    Tab(text: 'Media'),
+                    Tab(text: 'Dokumen'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      ListView(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.push_pin_outlined),
+                            title: Text(_isPinned ? 'Chat dipin' : 'Pin chat'),
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              _togglePin();
+                            },
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.person_outline),
+                            title: const Text('Nama panggilan'),
+                            subtitle: const Text(
+                              'Atur dari menu chat pada pembaruan berikutnya',
+                            ),
+                          ),
+                        ],
+                      ),
+                      GridView.builder(
+                        padding: const EdgeInsets.all(12),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                        itemCount: media
+                            .where((item) => item['message_type'] == 'IMAGE')
+                            .length,
+                        itemBuilder: (_, index) {
+                          final item = media
+                              .where((item) => item['message_type'] == 'IMAGE')
+                              .elementAt(index);
+                          return Image.network(
+                            item['content']?.toString() ?? '',
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const Icon(Icons.broken_image),
+                          );
+                        },
+                      ),
+                      ListView(
+                        children: media
+                            .where((item) => item['message_type'] == 'FILE')
+                            .map(
+                              (item) => ListTile(
+                                leading: const Icon(Icons.description_outlined),
+                                title: Text(
+                                  Uri.decodeComponent(
+                                    (item['content']?.toString() ?? '')
+                                        .split('/')
+                                        .last,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  _formatTime(
+                                    DateTime.tryParse(
+                                          item['created_at']?.toString() ?? '',
+                                        ) ??
+                                        DateTime.now(),
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -248,7 +511,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                       children: [
                         const Text(
                           'Tambah Anggota Grup',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         IconButton(
                           icon: const Icon(Icons.close),
@@ -265,7 +531,9 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                             label: Text(u['username']?.toString() ?? 'User'),
                             onDeleted: () {
                               setModalState(() {
-                                selectedUsers.removeWhere((item) => item['id'] == u['id']);
+                                selectedUsers.removeWhere(
+                                  (item) => item['id'] == u['id'],
+                                );
                               });
                             },
                           );
@@ -277,7 +545,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                       autofocus: true,
                       decoration: InputDecoration(
                         hintText: 'Cari nama / username...',
-                        prefixIcon: const Icon(Icons.search, color: Color(0xFF6C63FF)),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Color(0xFF6C63FF),
+                        ),
                         filled: true,
                         fillColor: Colors.grey.shade100,
                         border: OutlineInputBorder(
@@ -293,7 +564,9 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                         setModalState(() => isSearching = true);
                         final results = await _dbHelper.searchUsers(val);
                         setModalState(() {
-                          searchResults = List<Map<String, dynamic>>.from(results);
+                          searchResults = List<Map<String, dynamic>>.from(
+                            results,
+                          );
                           isSearching = false;
                         });
                       },
@@ -303,45 +576,65 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                       child: isSearching
                           ? const Center(child: CircularProgressIndicator())
                           : searchResults.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    'Ketik nama untuk mencari anggota baru.',
-                                    style: TextStyle(color: Colors.grey),
-                                  ),
-                                )
-                              : ListView.builder(
-                                  itemCount: searchResults.length,
-                                  itemBuilder: (context, index) {
-                                    final u = searchResults[index];
-                                    final uId = u['id']?.toString() ?? '';
-                                    final isAlreadyMember = existingMemberIds.contains(uId);
-                                    final isSelected = selectedUsers.any((item) => item['id'] == u['id']);
+                          ? const Center(
+                              child: Text(
+                                'Ketik nama untuk mencari anggota baru.',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: searchResults.length,
+                              itemBuilder: (context, index) {
+                                final u = searchResults[index];
+                                final uId = u['id']?.toString() ?? '';
+                                final isAlreadyMember = existingMemberIds
+                                    .contains(uId);
+                                final isSelected = selectedUsers.any(
+                                  (item) => item['id'] == u['id'],
+                                );
 
-                                    return ListTile(
-                                      title: Text(u['username']?.toString() ?? 'User'),
-                                      subtitle: isAlreadyMember
-                                          ? const Text('Sudah bergabung', style: TextStyle(color: Colors.grey, fontSize: 12))
-                                          : null,
-                                      trailing: isAlreadyMember
-                                          ? const Icon(Icons.check, color: Colors.grey)
-                                          : Icon(
-                                              isSelected ? Icons.check_circle : Icons.add_circle_outline,
-                                              color: isSelected ? Colors.green : const Color(0xFF6C63FF),
-                                            ),
-                                      onTap: isAlreadyMember
-                                          ? null
-                                          : () {
-                                              setModalState(() {
-                                                if (isSelected) {
-                                                  selectedUsers.removeWhere((item) => item['id'] == u['id']);
-                                                } else {
-                                                  selectedUsers.add(u);
-                                                }
-                                              });
-                                            },
-                                    );
-                                  },
-                                ),
+                                return ListTile(
+                                  title: Text(
+                                    u['username']?.toString() ?? 'User',
+                                  ),
+                                  subtitle: isAlreadyMember
+                                      ? const Text(
+                                          'Sudah bergabung',
+                                          style: TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 12,
+                                          ),
+                                        )
+                                      : null,
+                                  trailing: isAlreadyMember
+                                      ? const Icon(
+                                          Icons.check,
+                                          color: Colors.grey,
+                                        )
+                                      : Icon(
+                                          isSelected
+                                              ? Icons.check_circle
+                                              : Icons.add_circle_outline,
+                                          color: isSelected
+                                              ? Colors.green
+                                              : const Color(0xFF6C63FF),
+                                        ),
+                                  onTap: isAlreadyMember
+                                      ? null
+                                      : () {
+                                          setModalState(() {
+                                            if (isSelected) {
+                                              selectedUsers.removeWhere(
+                                                (item) => item['id'] == u['id'],
+                                              );
+                                            } else {
+                                              selectedUsers.add(u);
+                                            }
+                                          });
+                                        },
+                                );
+                              },
+                            ),
                     ),
                     SizedBox(
                       width: double.infinity,
@@ -349,12 +642,16 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF6C63FF),
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         onPressed: selectedUsers.isEmpty
                             ? null
                             : () async {
-                                final newIds = selectedUsers.map((u) => u['id'].toString()).toList();
+                                final newIds = selectedUsers
+                                    .map((u) => u['id'].toString())
+                                    .toList();
                                 Navigator.pop(context);
 
                                 try {
@@ -365,18 +662,29 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
 
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Berhasil menambahkan anggota!')),
+                                      const SnackBar(
+                                        content: Text(
+                                          'Berhasil menambahkan anggota!',
+                                        ),
+                                      ),
                                     );
                                   }
                                 } catch (e) {
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Gagal menambahkan anggota: $e')),
+                                      SnackBar(
+                                        content: Text(
+                                          'Gagal menambahkan anggota: $e',
+                                        ),
+                                      ),
                                     );
                                   }
                                 }
                               },
-                        child: const Text('Tambahkan Anggota', style: TextStyle(color: Colors.white, fontSize: 16)),
+                        child: const Text(
+                          'Tambahkan Anggota',
+                          style: TextStyle(color: Colors.white, fontSize: 16),
+                        ),
                       ),
                     ),
                   ],
@@ -424,11 +732,16 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
     }
 
     if (type == 'FILE') {
-      final fileName = Uri.decodeComponent(content.split('/').last.split('?').first);
+      final fileName = Uri.decodeComponent(
+        content.split('/').last.split('?').first,
+      );
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.insert_drive_file, color: isMe ? Colors.white : const Color(0xFF6C63FF)),
+          Icon(
+            Icons.insert_drive_file,
+            color: isMe ? Colors.white : const Color(0xFF6C63FF),
+          ),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
@@ -459,12 +772,56 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: InkWell(
+          onTap: _showRoomDetails,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_roomTitle, style: const TextStyle(fontSize: 16)),
+              if (_roomSubtitle.isNotEmpty)
+                Text(_roomSubtitle, style: const TextStyle(fontSize: 11)),
+            ],
+          ),
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.person_add_alt_1_outlined),
-            tooltip: 'Tambah Anggota',
-            onPressed: _showAddMemberModal,
+          if (widget.isGroup)
+            IconButton(
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+              tooltip: 'Tambah Anggota',
+              onPressed: _showAddMemberModal,
+            ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'pin') _togglePin();
+              if (value == 'media') _showRoomDetails(openMedia: true);
+              if (value == 'details') _showRoomDetails();
+              if (value == 'nickname') _setNickname();
+              if (value == 'rename_group') _renameGroup();
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'pin',
+                child: Text(_isPinned ? 'Lepas pin chat' : 'Pin chat'),
+              ),
+              const PopupMenuItem(
+                value: 'media',
+                child: Text('Media, link, dan dokumen'),
+              ),
+              if (widget.isGroup)
+                const PopupMenuItem(
+                  value: 'rename_group',
+                  child: Text('Ubah nama grup'),
+                )
+              else
+                const PopupMenuItem(
+                  value: 'nickname',
+                  child: Text('Atur nama panggilan'),
+                ),
+              const PopupMenuItem(
+                value: 'details',
+                child: Text('Info chat / grup'),
+              ),
+            ],
           ),
         ],
       ),
@@ -494,6 +851,12 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
 
                 final messages = snapshot.data!;
 
+                if (messages.isNotEmpty) {
+                  final id = int.tryParse(messages.last['id'].toString());
+                  if (id != null)
+                    _dbHelper.markConversationRead(_convIdInt, id);
+                }
+
                 if (messages.isEmpty) {
                   return const Center(
                     child: Text(
@@ -503,11 +866,16 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                   );
                 }
 
-                WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+                WidgetsBinding.instance.addPostFrameCallback(
+                  (_) => _scrollToBottom(),
+                );
 
                 return ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
@@ -515,9 +883,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                     final isMe = senderId == currentUserId;
                     final content = msg['content'] ?? '';
                     final messageType = msg['message_type'] ?? 'TEXT';
-                    final createdAt = DateTime.tryParse(msg['created_at'] ?? '') ?? DateTime.now();
-                    final timeStr =
-                        "${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}";
+                    final createdAt =
+                        DateTime.tryParse(msg['created_at'] ?? '') ??
+                        DateTime.now();
+                    final timeStr = _formatTime(createdAt);
 
                     if (!isMe && senderId.isNotEmpty) {
                       _fetchSenderName(senderId);
@@ -526,15 +895,22 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                     final senderName = _userCache[senderId] ?? 'Memuat...';
 
                     return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                      alignment: isMe
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
                       child: Container(
                         margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
                         constraints: BoxConstraints(
                           maxWidth: MediaQuery.of(context).size.width * 0.75,
                         ),
                         decoration: BoxDecoration(
-                          color: isMe ? Colors.blue.shade600 : Colors.grey.shade200,
+                          color: isMe
+                              ? Colors.blue.shade600
+                              : Colors.grey.shade200,
                           borderRadius: BorderRadius.only(
                             topLeft: const Radius.circular(16),
                             topRight: const Radius.circular(16),
@@ -543,8 +919,9 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                           ),
                         ),
                         child: Column(
-                          crossAxisAlignment:
-                              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                          crossAxisAlignment: isMe
+                              ? CrossAxisAlignment.end
+                              : CrossAxisAlignment.start,
                           children: [
                             if (!isMe) ...[
                               Text(
@@ -566,6 +943,15 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                 fontSize: 10,
                               ),
                             ),
+                            if (isMe)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(
+                                  Icons.remove_red_eye_outlined,
+                                  size: 13,
+                                  color: Colors.white70,
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -591,7 +977,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.add_circle_outline, color: Colors.blue),
+                    icon: const Icon(
+                      Icons.add_circle_outline,
+                      color: Colors.blue,
+                    ),
                     onPressed: _isUploading ? null : _showAttachmentOptions,
                   ),
                   Expanded(
@@ -600,7 +989,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
                         hintText: 'Ketik pesan...',
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(24),
                           borderSide: BorderSide.none,
@@ -615,7 +1007,11 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                   CircleAvatar(
                     backgroundColor: Colors.blue,
                     child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white, size: 20),
+                      icon: const Icon(
+                        Icons.send,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                       onPressed: _sendMessage,
                     ),
                   ),

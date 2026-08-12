@@ -99,6 +99,71 @@ class DbHelper {
   }
 
   // ============================================================
+  // FULL PROFILE DATA (UNTUK PROFILE PAGE)
+  // ============================================================
+
+  Future<Map<String, dynamic>?> getFullProfileData() async {
+    final user = currentUser;
+    if (user == null) return null;
+
+    // 1. Ambil Data User/Profile (Pastikan method getMyProfile() mengambil dari tabel 'users')
+    final profile = await getMyProfile();
+
+    // 2. Ambil Data Gamification (Streak, Tokens, XP, Rank)
+    final gamification = await getMyGamification();
+
+    // 3. Hitung Jumlah Total Notes dari Library
+    int totalNotes = 0;
+    try {
+      final notesResponse = await _client
+          .from('library_items')
+          .select('id')
+          .eq('user_id', user.id)
+          .isFilter('deleted_at', null);
+      totalNotes = (notesResponse as List).length;
+    } catch (e) {
+      print('Error hitung notes: $e');
+    }
+
+    // 4. Hitung Jumlah Discussion/Post di Forum
+    int totalDiscussions = 0;
+    try {
+      final forumResponse = await _client
+          .from('forum_posts')
+          .select('id')
+          .eq('user_id', user.id)
+          .isFilter(
+            'deleted_at',
+            null,
+          ); // <-- DITAMBAHKAN: Filter agar postingan terhapus tidak terhitung
+      totalDiscussions = (forumResponse as List).length;
+    } catch (e) {
+      print('Error hitung forum: $e');
+    }
+
+    // 5. Ambil Daftar Achievements User
+    List<Map<String, dynamic>> achievements = [];
+    try {
+      final achResponse = await _client
+          .from('user_achievements')
+          .select('*, achievements(*)')
+          .eq('user_id', user.id);
+      achievements = List<Map<String, dynamic>>.from(achResponse);
+    } catch (e) {
+      print('Error achievements: $e');
+      achievements = [];
+    }
+
+    return {
+      'profile': profile,
+      'gamification': gamification,
+      'total_notes': totalNotes,
+      'total_discussions': totalDiscussions,
+      'achievements': achievements,
+    };
+  }
+
+  // ============================================================
   // HOME - GAMIFICATION
   // ============================================================
 
@@ -218,39 +283,22 @@ class DbHelper {
     return row?['reaction']?.toString();
   }
 
-  Future<String?> setForumPostVote(int postId, String reaction) async {
+  Future<Map<String, dynamic>> setForumPostVote(
+    int postId,
+    String reaction,
+  ) async {
     final user = currentUser;
     if (user == null) throw Exception('User belum login.');
     if (reaction != 'LIKE' && reaction != 'DISLIKE') {
       throw ArgumentError.value(reaction, 'reaction');
     }
 
-    final existing = await _client
-        .from('forum_reactions')
-        .select('id, reaction')
-        .eq('post_id', postId)
-        .eq('user_id', user.id)
-        .maybeSingle();
-    if (existing?['reaction'] == reaction) {
-      await _client.from('forum_reactions').delete().eq('id', existing!['id']);
-      return null;
-    }
-    if (existing != null) {
-      await _client
-          .from('forum_reactions')
-          .update({
-            'reaction': reaction,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('id', existing['id']);
-    } else {
-      await _client.from('forum_reactions').insert({
-        'post_id': postId,
-        'user_id': user.id,
-        'reaction': reaction,
-      });
-    }
-    return reaction;
+    final result = await _client.rpc(
+      'set_forum_post_vote',
+      params: {'target_post_id': postId, 'target_reaction': reaction},
+    );
+    if (result is! Map) throw Exception('Respons vote tidak valid.');
+    return Map<String, dynamic>.from(result);
   }
 
   Future<List<Map<String, dynamic>>> getForumAttachments(int postId) async {
@@ -356,17 +404,51 @@ class DbHelper {
         'curation_status': 'PENDING',
       });
     }
-    await _client.from('forum_attachments').insert(attachmentRows);
+    final attachments = await _client
+        .from('forum_attachments')
+        .insert(attachmentRows)
+        .select('id');
+
+    // Kurasi berjalan di server. Jika provider sedang limit, attachment tetap
+    // PENDING dan dapat dicoba lagi tanpa menggagalkan post pengguna.
+    for (final attachment in attachments) {
+      try {
+        await _client.functions.invoke(
+          'curate-forum-attachment',
+          body: {'attachmentId': attachment['id']},
+        );
+      } catch (_) {
+        // Status PENDING sengaja dipertahankan untuk retry berikutnya.
+      }
+    }
   }
 
-  Future<void> saveForumAttachmentToLibrary(int attachmentId) async {
+  /// Mengulang kurasi hanya untuk attachment milik pengguna yang sedang login.
+  Future<void> retryForumAttachmentCuration(int attachmentId) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    await _client.functions.invoke(
+      'curate-forum-attachment',
+      body: {'attachmentId': attachmentId},
+    );
+  }
+
+  Future<void> saveForumAttachmentToLibrary(
+    int attachmentId, {
+    String folderName = 'Dari Forum',
+  }) async {
     final user = currentUser;
     if (user == null) throw Exception('User belum login.');
     final attachment = await _client
         .from('forum_attachments')
-        .select('file_id, files(original_name, extension, mime_type)')
+        .select(
+          'file_id, post_id, reply_id, curation_status, files(original_name, extension, mime_type)',
+        )
         .eq('id', attachmentId)
         .single();
+    if (attachment['curation_status']?.toString() != 'PASSED') {
+      throw Exception('File belum tersedia untuk disimpan.');
+    }
     final files = attachment['files'];
     if (files is! Map) throw Exception('File forum tidak ditemukan.');
 
@@ -374,27 +456,107 @@ class DbHelper {
         .from('library_folders')
         .select('id')
         .eq('user_id', user.id)
-        .eq('name', 'Dari Forum')
+        .eq('name', folderName)
         .maybeSingle();
     folder ??= await _client
         .from('library_folders')
-        .insert({'user_id': user.id, 'name': 'Dari Forum'})
+        .insert({'user_id': user.id, 'name': folderName})
         .select('id')
         .single();
 
     final extension = files['extension']?.toString() ?? '';
     final mimeType = files['mime_type']?.toString() ?? _getMimeType(extension);
+    final categoryId = await _libraryCategoryFromForumAttachment(attachment);
     await _client.from('library_items').insert({
       'user_id': user.id,
       'folder_id': folder['id'],
+      'category_id': categoryId,
       'title': files['original_name']?.toString() ?? 'Dokumen dari Forum',
-      'description': 'Disimpan dari Forum',
+      'description': folderName == 'Dari Balasan Forum'
+          ? 'Disimpan dari balasan Forum'
+          : 'Disimpan dari Forum',
       'source_type': 'SHARED',
       'content_type': _getContentType(extension, mimeType),
       'file_id': attachment['file_id'],
       'visibility': 'PRIVATE',
       'is_favorite': false,
     });
+  }
+
+  /// Mengambil kategori Library berdasarkan hashtag/kategori post Forum.
+  /// Jika post tidak punya kategori atau tidak ada kategori Library dengan nama
+  /// yang sama, hasilnya null agar item tetap dapat disimpan.
+  Future<int?> _libraryCategoryFromForumAttachment(
+    Map<String, dynamic> attachment,
+  ) async {
+    var postId = attachment['post_id'];
+    if (postId == null && attachment['reply_id'] != null) {
+      final reply = await _client
+          .from('forum_replies')
+          .select('post_id')
+          .eq('id', attachment['reply_id'])
+          .maybeSingle();
+      postId = reply?['post_id'];
+    }
+    if (postId == null) return null;
+
+    final post = await _client
+        .from('forum_posts')
+        .select('category_id')
+        .eq('id', postId)
+        .maybeSingle();
+    final forumCategoryId = post?['category_id'];
+    if (forumCategoryId == null) return null;
+
+    final forumCategory = await _client
+        .from('forum_categories')
+        .select('name')
+        .eq('id', forumCategoryId)
+        .maybeSingle();
+    final name = forumCategory?['name']?.toString().trim();
+    if (name == null || name.isEmpty) return null;
+
+    final libraryCategory = await _client
+        .from('library_categories')
+        .select('id')
+        .ilike('name', name)
+        .maybeSingle();
+    return int.tryParse(libraryCategory?['id']?.toString() ?? '');
+  }
+
+  /// Lampiran reply berasal dari Library pemilik reply dan tidak melalui kurasi.
+  Future<void> attachLibraryItemsToForumReply({
+    required int replyId,
+    required List<int> libraryItemIds,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    if (libraryItemIds.isEmpty) return;
+
+    final items = await _client
+        .from('library_items')
+        .select('id, file_id')
+        .eq('user_id', user.id)
+        .isFilter('deleted_at', null)
+        .inFilter('id', libraryItemIds);
+    if (items.length != libraryItemIds.length) {
+      throw Exception('Sebagian file Library tidak dapat dibagikan.');
+    }
+
+    final rows = <Map<String, dynamic>>[];
+    for (final item in items) {
+      if (item['file_id'] == null) {
+        throw Exception('Item Library tanpa file tidak dapat dibagikan.');
+      }
+      rows.add({
+        'reply_id': replyId,
+        'file_id': item['file_id'],
+        'uploaded_by': user.id,
+        'curation_status': 'PASSED',
+        'relevance_label': 'Lampiran balasan',
+      });
+    }
+    await _client.from('forum_attachments').insert(rows);
   }
 
   Future<bool> canCurateForumAttachments() async {
@@ -479,6 +641,7 @@ class DbHelper {
         .from('conversations')
         .select()
         .inFilter('id', conversationIds)
+        .eq('conversation_type', 'PRIVATE')
         .order('updated_at', ascending: false)
         .limit(limit);
 
@@ -541,7 +704,21 @@ class DbHelper {
         'other_user': otherUser,
       });
     }
-
+    for (final item in result) {
+      final settings = await _client
+          .from('conversation_member_settings')
+          .select('is_pinned, nickname, pinned_at')
+          .eq('conversation_id', item['conversation']['id'])
+          .eq('user_id', user.id)
+          .maybeSingle();
+      item['settings'] = settings ?? <String, dynamic>{};
+    }
+    result.sort((a, b) {
+      final aPinned = a['settings']?['is_pinned'] == true;
+      final bPinned = b['settings']?['is_pinned'] == true;
+      if (aPinned != bPinned) return aPinned ? -1 : 1;
+      return 0;
+    });
     return result;
   }
 
@@ -654,15 +831,48 @@ class DbHelper {
   }
 
   /// Mengambil folder milik pengguna yang sedang masuk.
+  Future<void> ensureDefaultLibraryFolders() async {
+    final user = currentUser;
+    if (user == null) return;
+
+    for (final name in const ['Dari Forum', 'Dari Balasan Forum']) {
+      final existing = await _client
+          .from('library_folders')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('name', name)
+          .maybeSingle();
+      if (existing == null) {
+        await _client.from('library_folders').insert({
+          'user_id': user.id,
+          'name': name,
+          'description': name == 'Dari Forum'
+              ? 'File yang disimpan dari postingan Forum'
+              : 'File yang disimpan dari balasan Forum',
+        });
+      }
+    }
+  }
+
+  /// Mengambil folder milik pengguna yang sedang masuk.
   Future<List<Map<String, dynamic>>> getLibraryFolders() async {
+    return getLibraryFoldersByParent();
+  }
+
+  Future<List<Map<String, dynamic>>> getLibraryFoldersByParent({
+    int? parentFolderId,
+  }) async {
     final user = currentUser;
     if (user == null) return [];
 
-    final response = await _client
+    var query = _client
         .from('library_folders')
         .select('id, parent_folder_id, name, description, color, icon')
-        .eq('user_id', user.id)
-        .order('name');
+        .eq('user_id', user.id);
+    query = parentFolderId == null
+        ? query.isFilter('parent_folder_id', null)
+        : query.eq('parent_folder_id', parentFolderId);
+    final response = await query.order('name');
     return List<Map<String, dynamic>>.from(response);
   }
 
@@ -678,6 +888,7 @@ class DbHelper {
   Future<void> createLibraryFolder({
     required String name,
     String? description,
+    int? parentFolderId,
   }) async {
     final user = currentUser;
     if (user == null) throw Exception('User belum login.');
@@ -685,6 +896,7 @@ class DbHelper {
     await _client.from('library_folders').insert({
       'user_id': user.id,
       'name': name.trim(),
+      'parent_folder_id': parentFolderId,
       'description': description?.trim().isEmpty ?? true
           ? null
           : description!.trim(),
@@ -712,6 +924,19 @@ class DbHelper {
           'folder_id': folderId,
           'category_id': categoryId,
           'is_favorite': isFavorite,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', itemId)
+        .eq('user_id', user.id);
+  }
+
+  Future<void> moveLibraryItem(int itemId, {int? folderId}) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    await _client
+        .from('library_items')
+        .update({
+          'folder_id': folderId,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         })
         .eq('id', itemId)
@@ -1191,6 +1416,63 @@ class DbHelper {
         .stream(primaryKey: ['id'])
         .eq('conversation_id', conversationId)
         .order('created_at', ascending: true);
+  }
+
+  Future<void> setMyPresence(bool isOnline) async {
+    final user = currentUser;
+    if (user == null) return;
+    await _client.from('user_presence').upsert({
+      'user_id': user.id,
+      'is_online': isOnline,
+      'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
+  Future<void> markConversationRead(int conversationId, int messageId) async {
+    final user = currentUser;
+    if (user == null) return;
+    await _client
+        .from('conversation_members')
+        .update({'last_read_message_id': messageId})
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user.id);
+  }
+
+  Future<void> setConversationPinned(int conversationId, bool pinned) async {
+    final user = currentUser;
+    if (user == null) return;
+    await _client.from('conversation_member_settings').upsert({
+      'conversation_id': conversationId,
+      'user_id': user.id,
+      'is_pinned': pinned,
+      'pinned_at': pinned ? DateTime.now().toUtc().toIso8601String() : null,
+    });
+  }
+
+  Future<void> setConversationNickname(
+    int conversationId,
+    String? nickname,
+  ) async {
+    final user = currentUser;
+    if (user == null) return;
+    await _client.from('conversation_member_settings').upsert({
+      'conversation_id': conversationId,
+      'user_id': user.id,
+      'nickname': nickname?.trim().isEmpty ?? true ? null : nickname!.trim(),
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getConversationMedia(
+    int conversationId,
+  ) async {
+    final response = await _client
+        .from('messages')
+        .select('id, sender_id, message_type, content, created_at')
+        .eq('conversation_id', conversationId)
+        .inFilter('message_type', ['IMAGE', 'FILE'])
+        .order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(response);
   }
 
   /// 3. Mengirim pesan baru ke percakapan

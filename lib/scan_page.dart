@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'ai_test_page.dart';
 
 class ScanPage extends StatelessWidget {
   const ScanPage({super.key});
@@ -6,10 +7,7 @@ class ScanPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI Scan'),
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text('AI Scan'), elevation: 0),
 
       body: Center(
         child: Column(
@@ -36,19 +34,23 @@ class ScanPage extends StatelessWidget {
 
             const Text(
               'AI Scan',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 8),
 
             Text(
               'Scan your notes and learn with AI.',
-              style: TextStyle(
-                color: Colors.grey.shade600,
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AiTestPage()),
               ),
+              icon: const Icon(Icons.bolt_rounded),
+              label: const Text('Test koneksi AI'),
             ),
           ],
         ),

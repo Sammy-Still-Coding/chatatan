@@ -9,3 +9,8 @@ entrypoint = "./functions/curate-forum-attachment/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/curate-forum-attachment/*.html" ]
+
+[functions.ai-chat]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/ai-chat/index.ts"

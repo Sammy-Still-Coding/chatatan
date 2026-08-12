@@ -18,9 +18,9 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
 
   Map<String, dynamic>? _post;
   List<Map<String, dynamic>> _replies = [];
+  List<Map<String, dynamic>> _selectedReplyLibraryItems = [];
   bool _isLoading = true;
   List<Map<String, dynamic>> _attachments = [];
-  bool _canCurate = false;
 
   // --- STATE TOGGLE LIKE (Mencegah Spam Like) ---
   String? _postVote;
@@ -66,6 +66,10 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
           .select('''
         *,
         users:user_id (username, full_name, avatar_url),
+        forum_attachments (
+          id, uploaded_by, curation_status, relevance_label,
+          files (original_name, extension, mime_type, file_size)
+        ),
         parent:parent_reply_id (
           users:user_id (username, full_name)
         )
@@ -75,14 +79,12 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
 
       final attachments = await _dbHelper.getForumAttachments(widget.postId);
       final postVote = await _dbHelper.getForumPostVote(widget.postId);
-      final canCurate = await _dbHelper.canCurateForumAttachments();
       if (!mounted) return;
       setState(() {
         _post = postRes;
         _replies = List<Map<String, dynamic>>.from(repliesRes);
         _attachments = attachments;
         _postVote = postVote;
-        _canCurate = canCurate;
       });
     } catch (e) {
       debugPrint('Error load detail: $e');
@@ -106,8 +108,13 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
   Future<void> _togglePostVote(String reaction) async {
     if (_post == null) return;
     try {
-      await _dbHelper.setForumPostVote(widget.postId, reaction);
-      await _loadPostData();
+      final result = await _dbHelper.setForumPostVote(widget.postId, reaction);
+      if (!mounted) return;
+      setState(() {
+        _post!['like_count'] = result['like_count'] ?? 0;
+        _post!['dislike_count'] = result['dislike_count'] ?? 0;
+        _postVote = result['reaction']?.toString();
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -117,9 +124,15 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     }
   }
 
-  Future<void> _saveAttachmentToLibrary(int attachmentId) async {
+  Future<void> _saveAttachmentToLibrary(
+    int attachmentId, {
+    String folderName = 'Dari Forum',
+  }) async {
     try {
-      await _dbHelper.saveForumAttachmentToLibrary(attachmentId);
+      await _dbHelper.saveForumAttachmentToLibrary(
+        attachmentId,
+        folderName: folderName,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -136,6 +149,115 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     }
   }
 
+  Future<void> _retryAttachmentCuration(int attachmentId) async {
+    try {
+      await _dbHelper.retryForumAttachmentCuration(attachmentId);
+      await _loadPostData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kurasi belum dapat dilakukan: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickReplyFilesFromLibrary() async {
+    try {
+      final items = await _dbHelper.getLibraryItems();
+      if (!mounted) return;
+      final selectedIds = _selectedReplyLibraryItems
+          .map((item) => item['id']?.toString())
+          .whereType<String>()
+          .toSet();
+      final result = await showModalBottomSheet<List<Map<String, dynamic>>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheetContext) {
+          final selected = <String>{...selectedIds};
+          return StatefulBuilder(
+            builder: (context, setSheetState) => SafeArea(
+              child: SizedBox(
+                height: MediaQuery.sizeOf(context).height * .7,
+                child: Column(
+                  children: [
+                    const ListTile(
+                      title: Text('Pilih file dari Library'),
+                      subtitle: Text(
+                        'Lampiran balasan tidak melalui kurasi AI',
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: items.length,
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          final files = item['files'];
+                          final hasFile =
+                              files is Map && files['original_name'] != null;
+                          final id = item['id'].toString();
+                          return CheckboxListTile(
+                            value: selected.contains(id),
+                            enabled: hasFile,
+                            title: Text(
+                              item['title']?.toString() ?? 'Tanpa judul',
+                            ),
+                            subtitle: Text(
+                              hasFile
+                                  ? files['original_name'].toString()
+                                  : 'Item tanpa file',
+                            ),
+                            onChanged: hasFile
+                                ? (value) => setSheetState(() {
+                                    if (value == true) {
+                                      selected.add(id);
+                                    } else {
+                                      selected.remove(id);
+                                    }
+                                  })
+                                : null,
+                          );
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(
+                            sheetContext,
+                            items
+                                .where(
+                                  (item) =>
+                                      selected.contains(item['id'].toString()),
+                                )
+                                .toList(),
+                          ),
+                          child: const Text('Gunakan file terpilih'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+      if (result != null && mounted) {
+        setState(() => _selectedReplyLibraryItems = result);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal membuka Library: $e')));
+      }
+    }
+  }
+
+  /*
   Future<void> _showCuration(Map<String, dynamic> attachment) async {
     String status = attachment['curation_status']?.toString() == 'FAILED'
         ? 'FAILED'
@@ -233,6 +355,7 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     labelController.dispose();
     feedbackController.dispose();
   }
+  */
 
   Widget _buildAttachments() {
     if (_attachments.isEmpty) return const SizedBox.shrink();
@@ -253,6 +376,9 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
           final score = attachment['relevance_score'];
           final label = attachment['relevance_label']?.toString();
           final passed = status == 'PASSED';
+          final isOwner =
+              attachment['uploaded_by']?.toString() ==
+              _supabase.auth.currentUser?.id;
           final statusColor = passed
               ? Colors.green
               : status == 'FAILED'
@@ -307,11 +433,13 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                         : null,
                     icon: const Icon(Icons.library_add_outlined),
                   ),
-                  if (_canCurate)
+                  if (status == 'PENDING' && isOwner)
                     IconButton(
-                      tooltip: 'Kurasi file',
-                      onPressed: () => _showCuration(attachment),
-                      icon: const Icon(Icons.verified_outlined),
+                      tooltip: 'Ulangi kurasi AI',
+                      onPressed: () => _retryAttachmentCuration(
+                        int.parse(attachment['id'].toString()),
+                      ),
+                      icon: const Icon(Icons.refresh_rounded),
                     ),
                 ],
               ),
@@ -374,13 +502,16 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
   Future<void> _sendReply() async {
     final text = _replyController.text.trim();
     final userId = _supabase.auth.currentUser?.id;
-    if (text.isEmpty || userId == null) return;
+    if ((text.isEmpty && _selectedReplyLibraryItems.isEmpty) ||
+        userId == null) {
+      return;
+    }
 
     try {
       final Map<String, dynamic> insertData = {
         'post_id': widget.postId,
         'user_id': userId,
-        'content': text,
+        'content': text.isEmpty ? 'Membagikan lampiran dari Library.' : text,
         'like_count': 0,
       };
 
@@ -389,7 +520,19 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
         insertData['parent_reply_id'] = _replyingTo!['id'];
       }
 
-      await _supabase.from('forum_replies').insert(insertData);
+      final createdReply = await _supabase
+          .from('forum_replies')
+          .insert(insertData)
+          .select('id')
+          .single();
+
+      await _dbHelper.attachLibraryItemsToForumReply(
+        replyId: int.parse(createdReply['id'].toString()),
+        libraryItemIds: _selectedReplyLibraryItems
+            .map((item) => int.tryParse(item['id'].toString()))
+            .whereType<int>()
+            .toList(),
+      );
 
       // Increment reply_count di forum_posts
       final currentReplyCount = (_post?['reply_count'] as int?) ?? 0;
@@ -399,9 +542,11 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
           .eq('id', widget.postId);
 
       _replyController.clear();
+      setState(() => _selectedReplyLibraryItems = []);
       _cancelReplying();
       _loadPostData();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Gagal mengirim balasan: $e')));
@@ -738,6 +883,74 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                       color: Colors.black87,
                                     ),
                                   ),
+                                  if (reply['forum_attachments'] is List)
+                                    ...List<Map<String, dynamic>>.from(
+                                      reply['forum_attachments'] as List,
+                                    ).map((attachment) {
+                                      final file = attachment['files'] is Map
+                                          ? Map<String, dynamic>.from(
+                                              attachment['files'] as Map,
+                                            )
+                                          : <String, dynamic>{};
+                                      return Container(
+                                        margin: const EdgeInsets.only(top: 8),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF5F6FB),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              (file['mime_type']?.toString() ??
+                                                          '')
+                                                      .startsWith('image/')
+                                                  ? Icons.image_outlined
+                                                  : Icons.attach_file_rounded,
+                                              size: 18,
+                                              color: const Color(0xFF6C5CE7),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                file['original_name']
+                                                        ?.toString() ??
+                                                    'Lampiran balasan',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                            IconButton(
+                                              tooltip: 'Simpan ke Library',
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              onPressed: () =>
+                                                  _saveAttachmentToLibrary(
+                                                    int.parse(
+                                                      attachment['id']
+                                                          .toString(),
+                                                    ),
+                                                    folderName:
+                                                        'Dari Balasan Forum',
+                                                  ),
+                                              icon: const Icon(
+                                                Icons.bookmark_add_outlined,
+                                                size: 19,
+                                                color: Color(0xFF6C5CE7),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }),
                                   const SizedBox(height: 10),
 
                                   // Action Bar Balasan: Like & Tombol Balas
@@ -871,6 +1084,32 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                       ),
                     ),
 
+                  if (_selectedReplyLibraryItems.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: _selectedReplyLibraryItems
+                            .map(
+                              (item) => InputChip(
+                                label: Text(
+                                  item['title']?.toString() ?? 'File Library',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                onDeleted: () => setState(() {
+                                  _selectedReplyLibraryItems.removeWhere(
+                                    (selected) =>
+                                        selected['id'].toString() ==
+                                        item['id'].toString(),
+                                  );
+                                }),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+
                   Row(
                     children: [
                       Expanded(
@@ -899,6 +1138,14 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                         ),
                       ),
                       const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'Pilih file atau foto dari Library',
+                        icon: const Icon(
+                          Icons.attach_file_rounded,
+                          color: Color(0xFF6C5CE7),
+                        ),
+                        onPressed: _pickReplyFilesFromLibrary,
+                      ),
                       IconButton(
                         icon: const Icon(
                           Icons.send_rounded,

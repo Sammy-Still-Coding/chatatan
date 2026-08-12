@@ -58,13 +58,53 @@ CREATE POLICY "forum_attachments_attach_own_library"
 ON public.forum_attachments FOR INSERT TO authenticated
 WITH CHECK (
   uploaded_by = auth.uid()
-  AND EXISTS (
-    SELECT 1 FROM public.forum_posts
-    WHERE forum_posts.id = post_id AND forum_posts.user_id = auth.uid()
+  AND (
+    EXISTS (
+      SELECT 1 FROM public.forum_posts
+      WHERE forum_posts.id = post_id AND forum_posts.user_id = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.forum_replies
+      WHERE forum_replies.id = reply_id AND forum_replies.user_id = auth.uid()
+    )
   )
   AND EXISTS (
     SELECT 1 FROM public.files
     WHERE files.id = file_id AND files.uploaded_by = auth.uid()
+  )
+);
+
+-- Metadata dan object file yang telah dibagikan boleh dibaca agar akun lain
+-- dapat menyimpan lampiran Forum ke Library mereka sendiri.
+ALTER TABLE public.files ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "files_read_own_or_shared_forum" ON public.files;
+CREATE POLICY "files_read_own_or_shared_forum"
+ON public.files FOR SELECT TO authenticated
+USING (
+  uploaded_by = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM public.forum_attachments
+    WHERE forum_attachments.file_id = files.id
+      AND forum_attachments.curation_status = 'PASSED'
+  )
+);
+
+DROP POLICY IF EXISTS "chatatan_files_read_own_or_shared_forum" ON storage.objects;
+CREATE POLICY "chatatan_files_read_own_or_shared_forum"
+ON storage.objects FOR SELECT TO authenticated
+USING (
+  bucket_id = 'chatatan-files'
+  AND EXISTS (
+    SELECT 1 FROM public.files
+    WHERE files.storage_path = storage.objects.name
+      AND (
+        files.uploaded_by = auth.uid()
+        OR EXISTS (
+          SELECT 1 FROM public.forum_attachments
+          WHERE forum_attachments.file_id = files.id
+            AND forum_attachments.curation_status = 'PASSED'
+        )
+      )
   )
 );
 
