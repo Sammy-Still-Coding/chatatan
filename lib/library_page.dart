@@ -1,10 +1,8 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 
 import 'db_helper.dart';
@@ -18,8 +16,15 @@ class LibraryPage extends StatefulWidget {
 
 class _LibraryPageState extends State<LibraryPage> {
   final DbHelper _dbHelper = DbHelper();
+  final TextEditingController _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _folders = [];
+  List<Map<String, dynamic>> _categories = [];
+  String _searchQuery = '';
+  int? _selectedFolderId;
+  int? _selectedCategoryId;
+  bool _favoritesOnly = false;
 
   bool _isLoading = true;
   bool _isUploading = false;
@@ -36,6 +41,56 @@ class _LibraryPageState extends State<LibraryPage> {
     _loadLibrary();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filteredItems {
+    final query = _searchQuery.trim().toLowerCase();
+
+    return _items.where((item) {
+      final title = item['title']?.toString().toLowerCase() ?? '';
+      final description = item['description']?.toString().toLowerCase() ?? '';
+      final originalName = _getOriginalFileName(item).toLowerCase();
+
+      final matchesSearch =
+          query.isEmpty ||
+          title.contains(query) ||
+          description.contains(query) ||
+          originalName.contains(query);
+      final matchesFolder =
+          _selectedFolderId == null || item['folder_id'] == _selectedFolderId;
+      final matchesCategory =
+          _selectedCategoryId == null ||
+          item['category_id'] == _selectedCategoryId;
+      final matchesFavorite = !_favoritesOnly || item['is_favorite'] == true;
+
+      return matchesSearch &&
+          matchesFolder &&
+          matchesCategory &&
+          matchesFavorite;
+    }).toList();
+  }
+
+  String _getOriginalFileName(Map<String, dynamic> item) {
+    final filesData = item['files'];
+
+    if (filesData is Map) {
+      return filesData['original_name']?.toString() ?? '';
+    }
+
+    if (filesData is List && filesData.isNotEmpty) {
+      final firstFile = filesData.first;
+      if (firstFile is Map) {
+        return firstFile['original_name']?.toString() ?? '';
+      }
+    }
+
+    return '';
+  }
+
   // ============================================================
   // LOAD LIBRARY
   // ============================================================
@@ -49,14 +104,20 @@ class _LibraryPageState extends State<LibraryPage> {
     }
 
     try {
-      final items = await _dbHelper.getLibraryItems();
+      final results = await Future.wait([
+        _dbHelper.getLibraryItems(),
+        _dbHelper.getLibraryFolders(),
+        _dbHelper.getLibraryCategories(),
+      ]);
+      final items = results[0];
+      final folders = results[1];
+      final categories = results[2];
 
       final Map<int, String> imageUrls = {};
       final Map<int, String> pdfUrls = {};
 
       for (final item in items) {
-        final contentType =
-            item['content_type']?.toString().toUpperCase();
+        final contentType = item['content_type']?.toString().toUpperCase();
 
         // Hanya IMAGE dan PDF
         if (contentType != 'IMAGE' && contentType != 'PDF') {
@@ -72,9 +133,7 @@ class _LibraryPageState extends State<LibraryPage> {
         final fileData = item['files'];
 
         if (fileData == null) {
-          debugPrint(
-            '$contentType: files kosong untuk item $itemId',
-          );
+          debugPrint('$contentType: files kosong untuk item $itemId');
           continue;
         }
 
@@ -82,48 +141,28 @@ class _LibraryPageState extends State<LibraryPage> {
 
         // Supabase mengembalikan Map
         if (fileData is Map<String, dynamic>) {
-          storagePath =
-              fileData['storage_path']?.toString();
+          storagePath = fileData['storage_path']?.toString();
         }
 
         // Jaga-jaga kalau List
-        if (fileData is List &&
-            fileData.isNotEmpty &&
-            fileData.first is Map) {
-          storagePath =
-              fileData.first['storage_path']?.toString();
+        if (fileData is List && fileData.isNotEmpty && fileData.first is Map) {
+          storagePath = fileData.first['storage_path']?.toString();
         }
 
         if (storagePath == null || storagePath.isEmpty) {
-          debugPrint(
-            '$contentType: storage_path kosong untuk item $itemId',
-          );
+          debugPrint('$contentType: storage_path kosong untuk item $itemId');
           continue;
         }
 
         try {
-          final url = await _dbHelper.getLibraryFileUrl(
-            storagePath,
-          );
-          
-          debugPrint(
-            '========================================',
-          );
-          debugPrint(
-            'PDF/IMAGE CONTENT TYPE: $contentType',
-          );
-          debugPrint(
-            'ITEM ID: $itemId',
-          );
-          debugPrint(
-            'STORAGE PATH: $storagePath',
-          );
-          debugPrint(
-            'SIGNED URL: $url',
-          );
-          debugPrint(
-            '========================================',
-          );
+          final url = await _dbHelper.getLibraryFileUrl(storagePath);
+
+          debugPrint('========================================');
+          debugPrint('PDF/IMAGE CONTENT TYPE: $contentType');
+          debugPrint('ITEM ID: $itemId');
+          debugPrint('STORAGE PATH: $storagePath');
+          debugPrint('SIGNED URL: $url');
+          debugPrint('========================================');
           final id = int.parse(itemId.toString());
 
           if (contentType == 'IMAGE') {
@@ -132,20 +171,18 @@ class _LibraryPageState extends State<LibraryPage> {
             pdfUrls[id] = url;
           }
 
-          debugPrint(
-            '$contentType berhasil mendapatkan URL: $id',
-          );
+          debugPrint('$contentType berhasil mendapatkan URL: $id');
         } catch (e) {
-          debugPrint(
-            'Gagal membuat URL $contentType: $e',
-          );
+          debugPrint('Gagal membuat URL $contentType: $e');
         }
       }
 
       if (!mounted) return;
 
       setState(() {
-        _items = items;
+        _items = List<Map<String, dynamic>>.from(items);
+        _folders = List<Map<String, dynamic>>.from(folders);
+        _categories = List<Map<String, dynamic>>.from(categories);
 
         _imageUrls
           ..clear()
@@ -176,24 +213,24 @@ class _LibraryPageState extends State<LibraryPage> {
         });
       }
 
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      withData: true,
-      allowedExtensions: [
-        'pdf',
-        'doc',
-        'docx',
-        'xls',
-        'xlsx',
-        'ppt',
-        'pptx',
-        'txt',
-        'jpg',
-        'jpeg',
-        'png',
-        'webp',
-      ],
-    );
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        withData: true,
+        allowedExtensions: [
+          'pdf',
+          'doc',
+          'docx',
+          'xls',
+          'xlsx',
+          'ppt',
+          'pptx',
+          'txt',
+          'jpg',
+          'jpeg',
+          'png',
+          'webp',
+        ],
+      );
 
       // User membatalkan pilih file
       if (result == null) {
@@ -207,9 +244,7 @@ class _LibraryPageState extends State<LibraryPage> {
       // ============================================================
 
       if (pickedFile.bytes == null) {
-        throw Exception(
-          'File tidak dapat dibaca.',
-        );
+        throw Exception('File tidak dapat dibaca.');
       }
 
       // ============================================================
@@ -234,11 +269,7 @@ class _LibraryPageState extends State<LibraryPage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'File berhasil diupload ke Library',
-          ),
-        ),
+        const SnackBar(content: Text('File berhasil diupload ke Library')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -247,19 +278,15 @@ class _LibraryPageState extends State<LibraryPage> {
         _errorMessage = e.toString();
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Gagal upload file: $e',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal upload file: $e')));
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _isUploading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+        });
+      }
     }
   }
 
@@ -267,11 +294,8 @@ class _LibraryPageState extends State<LibraryPage> {
   // IMAGE PREVIEW
   // ============================================================
 
-  Widget _buildLibraryPreview(
-    Map<String, dynamic> item,
-  ) {
-    final contentType =
-        item['content_type']?.toString().toUpperCase();
+  Widget _buildLibraryPreview(Map<String, dynamic> item) {
+    final contentType = item['content_type']?.toString().toUpperCase();
 
     final itemId = item['id'];
 
@@ -287,11 +311,7 @@ class _LibraryPageState extends State<LibraryPage> {
             height: 64,
             fit: BoxFit.cover,
 
-            loadingBuilder: (
-              context,
-              child,
-              loadingProgress,
-            ) {
+            loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) {
                 return child;
               }
@@ -299,26 +319,18 @@ class _LibraryPageState extends State<LibraryPage> {
               return Container(
                 width: 64,
                 height: 64,
-                color: Colors.deepPurple.withValues(
-                  alpha: 0.08,
-                ),
+                color: Colors.deepPurple.withValues(alpha: 0.08),
                 child: const Center(
                   child: SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
               );
             },
 
-            errorBuilder: (
-              context,
-              error,
-              stackTrace,
-            ) {
+            errorBuilder: (context, error, stackTrace) {
               return _buildFileIcon(contentType);
             },
           ),
@@ -350,150 +362,121 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   void _openImageFullscreen(String imageUrl) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) {
-        return Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) {
+          return Scaffold(
             backgroundColor: Colors.black,
-            foregroundColor: Colors.white,
-            elevation: 0,
-          ),
-          body: Center(
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 4.0,
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-                loadingBuilder: (
-                  context,
-                  child,
-                  loadingProgress,
-                ) {
-                  if (loadingProgress == null) {
-                    return child;
-                  }
+            appBar: AppBar(
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+            body: Center(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) {
+                      return child;
+                    }
 
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                    ),
-                  );
-                },
-                errorBuilder: (
-                  context,
-                  error,
-                  stackTrace,
-                ) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.broken_image,
-                          color: Colors.white,
-                          size: 60,
-                        ),
-                        SizedBox(height: 12),
-                        Text(
-                          'Gagal memuat gambar',
-                          style: TextStyle(
+                    return const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.broken_image,
                             color: Colors.white,
+                            size: 60,
                           ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                          SizedBox(height: 12),
+                          Text(
+                            'Gagal memuat gambar',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
-          ),
-        );
-      },
-    ),
-  );
-}
+          );
+        },
+      ),
+    );
+  }
 
   // ============================================================
   // FILE ICON
   // ============================================================
 
-  Widget _buildFileIcon(
-  String? contentType,
-  ) {
-  IconData icon;
+  Widget _buildFileIcon(String? contentType) {
+    IconData icon;
 
-  switch (contentType) {
-    case 'IMAGE':
-      icon = Icons.image_outlined;
-      break;
+    switch (contentType) {
+      case 'IMAGE':
+        icon = Icons.image_outlined;
+        break;
 
-    case 'PDF':
-      icon = Icons.picture_as_pdf_outlined;
-      break;
+      case 'PDF':
+        icon = Icons.picture_as_pdf_outlined;
+        break;
 
-    case 'DOCUMENT':
-      icon = Icons.description_outlined;
-      break;
+      case 'DOCUMENT':
+        icon = Icons.description_outlined;
+        break;
 
-    case 'TEXT':
-      icon = Icons.article_outlined;
-      break;
+      case 'TEXT':
+        icon = Icons.article_outlined;
+        break;
 
-    case 'NOTE':
-      icon = Icons.note_outlined;
-      break;
+      case 'NOTE':
+        icon = Icons.note_outlined;
+        break;
 
-    case 'FLASHCARD':
-      icon = Icons.style_outlined;
-      break;
+      case 'FLASHCARD':
+        icon = Icons.style_outlined;
+        break;
 
-    case 'QUIZ':
-      icon = Icons.quiz_outlined;
-      break;
+      case 'QUIZ':
+        icon = Icons.quiz_outlined;
+        break;
 
-    default:
-      icon = Icons.insert_drive_file_outlined;
-  }
+      default:
+        icon = Icons.insert_drive_file_outlined;
+    }
 
-  return Container(
-    width: 64,
-    height: 64,
-    decoration: BoxDecoration(
-      color: Colors.deepPurple
-          .withValues(alpha: 0.08),
-      borderRadius:
-          BorderRadius.circular(12),
-    ),
-    child: Icon(
-      icon,
-      color: Colors.deepPurple,
-      size: 30,
-    ),
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: Colors.deepPurple.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, color: Colors.deepPurple, size: 30),
     );
   }
 
-  Future<void> _openPdf(
-    String url,
-    String title,
-  ) async {
+  Future<void> _openPdf(String url, String title) async {
     try {
       debugPrint('PDF URL: $url');
 
-      final response = await http.get(
-        Uri.parse(url),
-      );
+      final response = await http.get(Uri.parse(url));
 
-      debugPrint(
-        'PDF STATUS: ${response.statusCode}',
-      );
+      debugPrint('PDF STATUS: ${response.statusCode}');
 
-      debugPrint(
-        'PDF BYTES: ${response.bodyBytes.length}',
-      );
+      debugPrint('PDF BYTES: ${response.bodyBytes.length}');
 
       if (response.statusCode != 200) {
         throw Exception(
@@ -502,13 +485,10 @@ class _LibraryPageState extends State<LibraryPage> {
         );
       }
 
-      final Uint8List pdfBytes =
-          response.bodyBytes;
+      final Uint8List pdfBytes = response.bodyBytes;
 
       if (pdfBytes.isEmpty) {
-        throw Exception(
-          'PDF kosong.',
-        );
+        throw Exception('PDF kosong.');
       }
 
       if (!mounted) return;
@@ -524,8 +504,7 @@ class _LibraryPageState extends State<LibraryPage> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                backgroundColor:
-                    Colors.deepPurple,
+                backgroundColor: Colors.deepPurple,
                 foregroundColor: Colors.white,
               ),
 
@@ -556,19 +535,13 @@ class _LibraryPageState extends State<LibraryPage> {
         ),
       );
     } catch (e) {
-      debugPrint(
-        'PDF DOWNLOAD GAGAL: $e',
-      );
+      debugPrint('PDF DOWNLOAD GAGAL: $e');
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Gagal membuka PDF: $e',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal membuka PDF: $e')));
     }
   }
 
@@ -693,40 +666,223 @@ class _LibraryPageState extends State<LibraryPage> {
     }
   }
 
-  // ============================================================
-  // FILE ICON
-  // ============================================================
+  int? _itemId(Map<String, dynamic> item) =>
+      int.tryParse(item['id']?.toString() ?? '');
 
-  IconData _getFileIcon(String sourceType, String contentType) {
-    if (sourceType == 'AI_SCAN') {
-      return Icons.document_scanner_rounded;
+  String _nameForId(List<Map<String, dynamic>> values, dynamic id) {
+    for (final value in values) {
+      if (value['id']?.toString() == id?.toString()) {
+        return value['name']?.toString() ?? '-';
+      }
+    }
+    return '-';
+  }
+
+  Future<void> _toggleFavorite(Map<String, dynamic> item) async {
+    final id = _itemId(item);
+    if (id == null) return;
+    final nextValue = item['is_favorite'] != true;
+    try {
+      await _dbHelper.setLibraryItemFavorite(id, nextValue);
+      await _loadLibrary();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal memperbarui favorit: $e')));
+    }
+  }
+
+  Future<void> _editItem(Map<String, dynamic> item) async {
+    final id = _itemId(item);
+    if (id == null) return;
+    final titleController = TextEditingController(
+      text: item['title']?.toString() ?? '',
+    );
+    final descriptionController = TextEditingController(
+      text: item['description']?.toString() ?? '',
+    );
+    int? folderId = int.tryParse(item['folder_id']?.toString() ?? '');
+    int? categoryId = int.tryParse(item['category_id']?.toString() ?? '');
+    var isFavorite = item['is_favorite'] == true;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit item'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(labelText: 'Judul'),
+                ),
+                TextField(
+                  controller: descriptionController,
+                  maxLines: 3,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(labelText: 'Deskripsi'),
+                ),
+                DropdownButtonFormField<int?>(
+                  initialValue: folderId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Folder'),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('Tanpa folder'),
+                    ),
+                    ..._folders.map(
+                      (folder) => DropdownMenuItem<int?>(
+                        value: int.tryParse(folder['id'].toString()),
+                        child: Text(folder['name']?.toString() ?? 'Folder'),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) => setDialogState(() => folderId = value),
+                ),
+                DropdownButtonFormField<int?>(
+                  initialValue: categoryId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Kategori'),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('Tanpa kategori'),
+                    ),
+                    ..._categories.map(
+                      (category) => DropdownMenuItem<int?>(
+                        value: int.tryParse(category['id'].toString()),
+                        child: Text(category['name']?.toString() ?? 'Kategori'),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => categoryId = value),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Favorit'),
+                  value: isFavorite,
+                  onChanged: (value) =>
+                      setDialogState(() => isFavorite = value),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: titleController.text.trim().isEmpty
+                  ? null
+                  : () => Navigator.pop(dialogContext, true),
+              child: const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved == true && titleController.text.trim().isNotEmpty) {
+      try {
+        await _dbHelper.updateLibraryItem(
+          id,
+          title: titleController.text,
+          description: descriptionController.text,
+          folderId: folderId,
+          categoryId: categoryId,
+          isFavorite: isFavorite,
+        );
+        await _loadLibrary();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Gagal menyimpan item: $e')));
+        }
+      }
+    } else if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Judul tidak boleh kosong.')),
+      );
+    }
+    titleController.dispose();
+    descriptionController.dispose();
+  }
+
+  Future<void> _deleteItem(Map<String, dynamic> item) async {
+    final id = _itemId(item);
+    if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hapus item?'),
+        content: Text(
+          '"${item['title'] ?? 'Item ini'}" akan dihapus dari Library.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _dbHelper.deleteLibraryItem(id);
+      await _loadLibrary();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal menghapus item: $e')));
+      }
+    }
+  }
+
+  void _openItem(Map<String, dynamic> item) {
+    final contentType = item['content_type']?.toString().toUpperCase();
+    final id = _itemId(item);
+    if (id == null) return;
+
+    if (contentType == 'IMAGE') {
+      final imageUrl = _imageUrls[id];
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        _openImageFullscreen(imageUrl);
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Gambar belum tersedia')));
+      }
+      return;
     }
 
-    switch (contentType) {
-      case 'PDF':
-        return Icons.picture_as_pdf_rounded;
-
-      case 'IMAGE':
-        return Icons.image_rounded;
-
-      case 'DOCUMENT':
-        return Icons.description_rounded;
-
-      case 'TEXT':
-        return Icons.text_snippet_rounded;
-
-      case 'NOTE':
-        return Icons.sticky_note_2_rounded;
-
-      case 'FLASHCARD':
-        return Icons.style_rounded;
-
-      case 'QUIZ':
-        return Icons.quiz_rounded;
-
-      default:
-        return Icons.insert_drive_file_rounded;
+    if (contentType == 'PDF') {
+      final pdfUrl = _pdfUrls[id];
+      if (pdfUrl != null && pdfUrl.isNotEmpty) {
+        _openPdf(pdfUrl, item['title']?.toString() ?? 'PDF');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('URL PDF tidak ditemukan.')),
+        );
+      }
+      return;
     }
+
+    _showItemInfo(item);
   }
 
   // ============================================================
@@ -757,8 +913,6 @@ class _LibraryPageState extends State<LibraryPage> {
 
     final fileSize = file?['file_size'];
 
-    final icon = _getFileIcon(sourceType, contentType);
-
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -783,60 +937,7 @@ class _LibraryPageState extends State<LibraryPage> {
         // --------------------------------------------------------
         // ON TAP
         // --------------------------------------------------------
-        onTap: () {
-          final contentType =
-              item['content_type']?.toString().toUpperCase();
-
-          final itemId = item['id'];
-
-          if (itemId == null) return;
-
-          final id = int.parse(itemId.toString());
-
-          // =========================
-          // IMAGE
-          // =========================
-          if (contentType == 'IMAGE') {
-            final imageUrl = _imageUrls[id];
-
-            if (imageUrl != null && imageUrl.isNotEmpty) {
-              _openImageFullscreen(imageUrl);
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Gambar belum tersedia'),
-                ),
-              );
-            }
-
-            return;
-          }
-
-          // =========================
-          // PDF
-          // =========================
-          if (contentType == 'PDF') {
-            final pdfUrl = _pdfUrls[itemId];
-
-            if (pdfUrl != null && pdfUrl.isNotEmpty) {
-              _openPdf(
-                pdfUrl,
-                item['title']?.toString() ?? 'PDF',
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'URL PDF tidak ditemukan.',
-                  ),
-                ),
-              );
-            }
-
-            return;
-          }
-        },
-
+        onTap: () => _openItem(item),
 
         // --------------------------------------------------------
         // TITLE
@@ -877,12 +978,61 @@ class _LibraryPageState extends State<LibraryPage> {
         // --------------------------------------------------------
         // TRAILING
         // --------------------------------------------------------
-        trailing: Icon(
-          isFavorite ? Icons.star_rounded : Icons.chevron_right_rounded,
-          color: isFavorite ? Colors.amber : Colors.grey.shade500,
+        trailing: PopupMenuButton<String>(
+          tooltip: 'Aksi item',
+          onSelected: (action) {
+            switch (action) {
+              case 'open':
+                _openItem(item);
+                break;
+              case 'favorite':
+                _toggleFavorite(item);
+                break;
+              case 'edit':
+                _editItem(item);
+                break;
+              case 'delete':
+                _deleteItem(item);
+                break;
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'open',
+              child: ListTile(
+                leading: Icon(Icons.visibility_outlined),
+                title: Text('Buka / detail'),
+              ),
+            ),
+            PopupMenuItem(
+              value: 'favorite',
+              child: ListTile(
+                leading: Icon(isFavorite ? Icons.star_outline : Icons.star),
+                title: Text(
+                  isFavorite ? 'Hapus dari favorit' : 'Tambah favorit',
+                ),
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'edit',
+              child: ListTile(
+                leading: Icon(Icons.edit_outlined),
+                title: Text('Edit'),
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'delete',
+              child: ListTile(
+                leading: Icon(Icons.delete_outline, color: Colors.red),
+                title: Text('Hapus', style: TextStyle(color: Colors.red)),
+              ),
+            ),
+          ],
+          child: Icon(
+            isFavorite ? Icons.star_rounded : Icons.more_vert_rounded,
+            color: isFavorite ? Colors.amber : Colors.grey.shade500,
+          ),
         ),
-
-
       ),
     );
   }
@@ -893,10 +1043,11 @@ class _LibraryPageState extends State<LibraryPage> {
 
   void _showItemInfo(Map<String, dynamic> item) {
     final title = item['title']?.toString() ?? 'Untitled';
-
     final contentType = item['content_type']?.toString() ?? '';
-
     final sourceType = item['source_type']?.toString() ?? '';
+    final fileName = _getOriginalFileName(item);
+    final files = item['files'];
+    final fileSize = files is Map ? files['file_size'] : null;
 
     showModalBottomSheet(
       context: context,
@@ -918,9 +1069,21 @@ class _LibraryPageState extends State<LibraryPage> {
 
                 const SizedBox(height: 12),
 
-                Text('Type: $contentType'),
-
-                Text('Source: $sourceType'),
+                Text('Tipe: ${_getFileLabel(sourceType, contentType)}'),
+                Text('Sumber: $sourceType'),
+                if (fileName.isNotEmpty) Text('File: $fileName'),
+                if (fileSize != null)
+                  Text('Ukuran: ${_formatFileSize(fileSize)}'),
+                if (item['folder_id'] != null)
+                  Text('Folder: ${_nameForId(_folders, item['folder_id'])}'),
+                if (item['category_id'] != null)
+                  Text(
+                    'Kategori: ${_nameForId(_categories, item['category_id'])}',
+                  ),
+                if ((item['description']?.toString() ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(item['description'].toString()),
+                ],
 
                 const SizedBox(height: 20),
 
@@ -929,17 +1092,18 @@ class _LibraryPageState extends State<LibraryPage> {
                   child: ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(context);
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Preview akan dibuat pada tahap berikutnya.',
-                          ),
-                        ),
-                      );
+                      if (contentType.toUpperCase() == 'IMAGE' ||
+                          contentType.toUpperCase() == 'PDF') {
+                        _openItem(item);
+                      }
                     },
                     icon: const Icon(Icons.visibility_rounded),
-                    label: const Text('Preview'),
+                    label: Text(
+                      contentType.toUpperCase() == 'IMAGE' ||
+                              contentType.toUpperCase() == 'PDF'
+                          ? 'Buka'
+                          : 'Tutup',
+                    ),
                   ),
                 ),
               ],
@@ -986,9 +1150,9 @@ class _LibraryPageState extends State<LibraryPage> {
             const SizedBox(height: 20),
 
             ElevatedButton.icon(
-              onPressed: _pickAndUploadImage,
-              icon: const Icon(Icons.add_photo_alternate_rounded),
-              label: const Text('Tambah Gambar'),
+              onPressed: _showAddLibraryMenu,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Tambah item'),
             ),
           ],
         ),
@@ -1040,6 +1204,170 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
+  Widget _buildFilterBar() {
+    final hasFilters =
+        _selectedFolderId != null ||
+        _selectedCategoryId != null ||
+        _favoritesOnly;
+    return SizedBox(
+      height: 46,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          FilterChip(
+            label: const Text('Favorit'),
+            selected: _favoritesOnly,
+            avatar: const Icon(Icons.star_outline, size: 18),
+            onSelected: (value) => setState(() => _favoritesOnly = value),
+          ),
+          const SizedBox(width: 8),
+          ActionChip(
+            avatar: const Icon(Icons.folder_outlined, size: 18),
+            label: Text(
+              _selectedFolderId == null
+                  ? 'Semua folder'
+                  : _nameForId(_folders, _selectedFolderId),
+            ),
+            onPressed: _showFolderFilter,
+          ),
+          const SizedBox(width: 8),
+          ActionChip(
+            avatar: const Icon(Icons.category_outlined, size: 18),
+            label: Text(
+              _selectedCategoryId == null
+                  ? 'Semua kategori'
+                  : _nameForId(_categories, _selectedCategoryId),
+            ),
+            onPressed: _showCategoryFilter,
+          ),
+          if (hasFilters) ...[
+            const SizedBox(width: 8),
+            ActionChip(
+              avatar: const Icon(Icons.filter_alt_off_outlined, size: 18),
+              label: const Text('Reset'),
+              onPressed: () => setState(() {
+                _selectedFolderId = null;
+                _selectedCategoryId = null;
+                _favoritesOnly = false;
+              }),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showFolderFilter() async {
+    final selected = await showModalBottomSheet<int?>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Pilih folder')),
+            ListTile(
+              leading: const Icon(Icons.folder_off_outlined),
+              title: const Text('Semua folder'),
+              onTap: () => Navigator.pop(sheetContext),
+            ),
+            ..._folders.map(
+              (folder) => ListTile(
+                leading: const Icon(Icons.folder_outlined),
+                title: Text(folder['name']?.toString() ?? 'Folder'),
+                trailing:
+                    folder['id']?.toString() == _selectedFolderId?.toString()
+                    ? const Icon(Icons.check, color: Colors.deepPurple)
+                    : null,
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  int.tryParse(folder['id'].toString()),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _selectedFolderId = selected);
+  }
+
+  Future<void> _showCategoryFilter() async {
+    final selected = await showModalBottomSheet<int?>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Pilih kategori')),
+            ListTile(
+              leading: const Icon(Icons.category_outlined),
+              title: const Text('Semua kategori'),
+              onTap: () => Navigator.pop(sheetContext),
+            ),
+            ..._categories.map(
+              (category) => ListTile(
+                leading: const Icon(Icons.category_outlined),
+                title: Text(category['name']?.toString() ?? 'Kategori'),
+                trailing:
+                    category['id']?.toString() ==
+                        _selectedCategoryId?.toString()
+                    ? const Icon(Icons.check, color: Colors.deepPurple)
+                    : null,
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  int.tryParse(category['id'].toString()),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _selectedCategoryId = selected);
+  }
+
+  Future<void> _createFolder() async {
+    final controller = TextEditingController();
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Buat folder'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(hintText: 'Nama folder'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Buat'),
+          ),
+        ],
+      ),
+    );
+    final name = controller.text.trim();
+    controller.dispose();
+    if (created != true || name.isEmpty) return;
+    try {
+      await _dbHelper.createLibraryFolder(name: name);
+      await _loadLibrary();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal membuat folder: $e')));
+      }
+    }
+  }
+
   // ============================================================
   // BUILD
   // ============================================================
@@ -1076,7 +1404,7 @@ class _LibraryPageState extends State<LibraryPage> {
 
                         SizedBox(height: 16),
 
-                        Text('Mengupload gambar...'),
+                        Text('Mengupload item...'),
                       ],
                     ),
                   ),
@@ -1100,105 +1428,168 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   void _showAddLibraryMenu() {
-  showModalBottomSheet(
-    context: context,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(
-        top: Radius.circular(24),
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-    ),
-    builder: (context) {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Tambah ke Library',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Tambah ke Library',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-              ),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.deepPurple.shade50,
-                    borderRadius: BorderRadius.circular(12),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.image, color: Colors.deepPurple),
                   ),
-                  child: const Icon(
-                    Icons.image,
-                    color: Colors.deepPurple,
+                  title: const Text('Gambar'),
+                  subtitle: const Text('JPG, PNG, WEBP, GIF'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndUploadImage();
+                  },
+                ),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.create_new_folder_outlined,
+                      color: Colors.deepPurple,
+                    ),
                   ),
+                  title: const Text('Folder baru'),
+                  subtitle: const Text('Kelompokkan item Library'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _createFolder();
+                  },
                 ),
-                title: const Text('Gambar'),
-                subtitle: const Text(
-                  'JPG, PNG, WEBP, GIF',
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickAndUploadImage();
-                },
-              ),
 
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.deepPurple.shade50,
-                    borderRadius: BorderRadius.circular(12),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.description,
+                      color: Colors.deepPurple,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.description,
-                    color: Colors.deepPurple,
-                  ),
+                  title: const Text('PDF / Dokumen'),
+                  subtitle: const Text('PDF, DOCX, XLSX, PPTX, TXT'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndUploadFile();
+                  },
                 ),
-                title: const Text('PDF / Dokumen'),
-                subtitle: const Text(
-                  'PDF, DOCX, XLSX, PPTX, TXT',
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickAndUploadFile();
-                },
-              ),
 
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
   // ============================================================
   // BODY
   // ============================================================
 
   Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    final filteredItems = _filteredItems;
 
-    if (_errorMessage != null && _items.isEmpty) {
-      return _buildErrorState();
-    }
-
-    if (_items.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-      itemCount: _items.length,
-      itemBuilder: (context, index) {
-        return _buildLibraryItem(_items[index]);
-      },
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            controller: _searchController,
+            textInputAction: TextInputAction.search,
+            onChanged: (value) {
+              setState(() {
+                _searchQuery = value;
+              });
+            },
+            decoration: InputDecoration(
+              hintText: 'Cari judul, deskripsi, atau nama file',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Hapus pencarian',
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {
+                          _searchQuery = '';
+                        });
+                      },
+                      icon: const Icon(Icons.clear),
+                    ),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+        _buildFilterBar(),
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _errorMessage != null && _items.isEmpty
+              ? _buildErrorState()
+              : _items.isEmpty
+              ? _buildEmptyState()
+              : filteredItems.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(32),
+                  children: const [
+                    SizedBox(height: 80),
+                    Icon(Icons.search_off, size: 64),
+                    SizedBox(height: 16),
+                    Text(
+                      'Tidak ada item yang cocok',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                )
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                  itemCount: filteredItems.length,
+                  itemBuilder: (context, index) {
+                    return _buildLibraryItem(filteredItems[index]);
+                  },
+                ),
+        ),
+      ],
     );
   }
 }

@@ -1,7 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'db_helper.dart';
 
 class CreateForumModal extends StatefulWidget {
   // BENAR
@@ -13,12 +12,13 @@ class CreateForumModal extends StatefulWidget {
 
 class _CreateForumModalState extends State<CreateForumModal> {
   final _supabase = Supabase.instance.client;
-  
+  final _dbHelper = DbHelper();
+
   // Controller hanya untuk Kategori (Free Text) dan Isi Postingan
   final _categoryController = TextEditingController();
   final _contentController = TextEditingController();
 
-  File? _selectedImage;
+  List<Map<String, dynamic>> _selectedLibraryItems = [];
   bool _isLoading = false;
 
   @override
@@ -28,13 +28,97 @@ class _CreateForumModalState extends State<CreateForumModal> {
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-    if (picked != null) {
-      setState(() {
-        _selectedImage = File(picked.path);
-      });
+  Future<void> _pickFromLibrary() async {
+    try {
+      final items = await _dbHelper.getLibraryItems();
+      if (!mounted) return;
+      final selectedIds = _selectedLibraryItems
+          .map((item) => item['id']?.toString())
+          .whereType<String>()
+          .toSet();
+      final result = await showModalBottomSheet<List<Map<String, dynamic>>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheetContext) {
+          final selected = <String>{...selectedIds};
+          return StatefulBuilder(
+            builder: (context, setSheetState) => SafeArea(
+              child: SizedBox(
+                height: MediaQuery.sizeOf(context).height * .7,
+                child: Column(
+                  children: [
+                    const ListTile(
+                      title: Text('Pilih file dari Library'),
+                      subtitle: Text('File akan masuk antrian kurasi Forum'),
+                    ),
+                    Expanded(
+                      child: items.isEmpty
+                          ? const Center(
+                              child: Text('Library kamu belum memiliki file.'),
+                            )
+                          : ListView.builder(
+                              itemCount: items.length,
+                              itemBuilder: (context, index) {
+                                final item = items[index];
+                                final id = item['id'].toString();
+                                final files = item['files'];
+                                final fileName = files is Map
+                                    ? files['original_name']?.toString()
+                                    : null;
+                                return CheckboxListTile(
+                                  value: selected.contains(id),
+                                  title: Text(
+                                    item['title']?.toString() ?? 'Tanpa judul',
+                                  ),
+                                  subtitle: Text(fileName ?? 'Item tanpa file'),
+                                  enabled: fileName != null,
+                                  onChanged: fileName == null
+                                      ? null
+                                      : (checked) => setSheetState(() {
+                                          if (checked == true) {
+                                            selected.add(id);
+                                          } else {
+                                            selected.remove(id);
+                                          }
+                                        }),
+                                );
+                              },
+                            ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(
+                            sheetContext,
+                            items
+                                .where(
+                                  (item) =>
+                                      selected.contains(item['id'].toString()),
+                                )
+                                .toList(),
+                          ),
+                          child: const Text('Gunakan file terpilih'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+      if (result != null && mounted) {
+        setState(() => _selectedLibraryItems = result);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal membuka Library: ' + e.toString())),
+        );
+      }
     }
   }
 
@@ -60,11 +144,7 @@ class _CreateForumModalState extends State<CreateForumModal> {
       // 2. Jika belum ada, buat kategori baru secara otomatis
       final newCategory = await _supabase
           .from('forum_categories')
-          .insert({
-            'name': formattedName,
-            'slug': slug,
-            'is_active': true,
-          })
+          .insert({'name': formattedName, 'slug': slug, 'is_active': true})
           .select('id')
           .single();
 
@@ -106,22 +186,37 @@ class _CreateForumModalState extends State<CreateForumModal> {
         throw Exception('Gagal mendapatkan ID Kategori');
       }
 
-      final titleSnippet = content.length > 50 ? '${content.substring(0, 50)}...' : content;
+      final titleSnippet = content.length > 50
+          ? '${content.substring(0, 50)}...'
+          : content;
 
       // Insert ke forum_posts (categoryId dipastikan TIDAK NULL)
-      await _supabase.from('forum_posts').insert({
-        'user_id': userId,
-        'category_id': categoryId,
-        'title': titleSnippet,
-        'content': content,
-      });
+      final post = await _supabase
+          .from('forum_posts')
+          .insert({
+            'user_id': userId,
+            'category_id': categoryId,
+            'title': titleSnippet,
+            'content': content,
+          })
+          .select('id')
+          .single();
+
+      final postId = int.parse(post['id'].toString());
+      await _dbHelper.attachLibraryItemsToForum(
+        postId: postId,
+        libraryItemIds: _selectedLibraryItems
+            .map((item) => int.tryParse(item['id'].toString()))
+            .whereType<int>()
+            .toList(),
+      );
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal membuat postingan: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal membuat postingan: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -167,7 +262,10 @@ class _CreateForumModalState extends State<CreateForumModal> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -186,13 +284,13 @@ class _CreateForumModalState extends State<CreateForumModal> {
             ),
             const SizedBox(height: 12),
 
-            // Opsi Tambah Gambar
+            // Hanya file yang sudah ada di Library dapat dibagikan ke Forum.
             Row(
               children: [
                 OutlinedButton.icon(
-                  onPressed: _pickImage,
-                  icon: const Icon(Icons.image_outlined),
-                  label: const Text('Gambar'),
+                  onPressed: _isLoading ? null : _pickFromLibrary,
+                  icon: const Icon(Icons.library_books_outlined),
+                  label: const Text('Pilih dari Library'),
                   style: OutlinedButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -200,23 +298,32 @@ class _CreateForumModalState extends State<CreateForumModal> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                if (_selectedImage != null) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.file(
-                      _selectedImage!,
-                      width: 40,
-                      height: 40,
-                      fit: BoxFit.cover,
-                    ),
+                if (_selectedLibraryItems.isNotEmpty)
+                  Text(
+                    _selectedLibraryItems.length.toString() + ' file dipilih',
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.cancel, color: Colors.grey),
-                    onPressed: () => setState(() => _selectedImage = null),
-                  ),
-                ],
               ],
             ),
+            if (_selectedLibraryItems.isNotEmpty)
+              ..._selectedLibraryItems.asMap().entries.map(
+                (entry) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.description_outlined),
+                  title: Text(
+                    entry.value['title']?.toString() ?? 'Tanpa judul',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Hapus file',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(
+                      () => _selectedLibraryItems.removeAt(entry.key),
+                    ),
+                  ),
+                ),
+              ),
             const SizedBox(height: 16),
 
             // Tombol Post
@@ -234,9 +341,18 @@ class _CreateForumModalState extends State<CreateForumModal> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
-                    : const Text('Post', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    : const Text(
+                        'Post',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 8),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'create_forum_modal.dart';
 import 'forum_detail_page.dart';
+import 'db_helper.dart';
 
 class ForumTab extends StatefulWidget {
   const ForumTab({super.key});
@@ -12,11 +13,11 @@ class ForumTab extends StatefulWidget {
 
 class _ForumTabState extends State<ForumTab> {
   final _supabase = Supabase.instance.client;
+  final _dbHelper = DbHelper();
   List<Map<String, dynamic>> _posts = [];
   bool _isLoading = true;
 
-  // --- STATE TOGGLE LIKE (Mencegah Spam Like) ---
-  final Set<int> _likedPostIds = {};
+  final Map<int, String?> _postVotes = {};
 
   @override
   void initState() {
@@ -27,20 +28,34 @@ class _ForumTabState extends State<ForumTab> {
   Future<void> _fetchPosts() async {
     setState(() => _isLoading = true);
     try {
-      final response = await _supabase.from('forum_posts').select('''
+      final response = await _supabase
+          .from('forum_posts')
+          .select('''
             id,
             title,
             content,
             created_at,
             category_id,
             like_count,
+            dislike_count,
             users:user_id (username, full_name, avatar_url),
             forum_categories ( name ),
             forum_replies ( count )
-          ''').order('created_at', ascending: false);
+          ''')
+          .order('created_at', ascending: false);
 
+      final posts = List<Map<String, dynamic>>.from(response);
+      final votes = <int, String?>{};
+      for (final post in posts) {
+        final id = int.tryParse(post['id'].toString());
+        if (id != null) votes[id] = await _dbHelper.getForumPostVote(id);
+      }
+      if (!mounted) return;
       setState(() {
-        _posts = List<Map<String, dynamic>>.from(response);
+        _posts = posts;
+        _postVotes
+          ..clear()
+          ..addAll(votes);
       });
     } catch (e) {
       debugPrint('Error fetching posts: $e');
@@ -61,46 +76,35 @@ class _ForumTabState extends State<ForumTab> {
     return 'Baru saja';
   }
 
-  // --- TOGGLE LIKE (+1 / -1) ---
-  Future<void> _toggleLike(int index) async {
+  Future<void> _toggleVote(int index, String reaction) async {
     final post = _posts[index];
     final postId = post['id'] as int?;
-
-    // Mencegah error jika ID postingan bernilai null
     if (postId == null) return;
-
-    final isLiked = _likedPostIds.contains(postId);
-    final currentLikes = (post['like_count'] as int?) ?? 0;
-    final newLikes = isLiked ? (currentLikes - 1) : (currentLikes + 1);
-    final safeLikes = newLikes < 0 ? 0 : newLikes;
-
-    setState(() {
-      if (isLiked) {
-        _likedPostIds.remove(postId);
-      } else {
-        _likedPostIds.add(postId);
-      }
-      _posts[index]['like_count'] = safeLikes;
-    });
-
     try {
-      await _supabase
-          .from('forum_posts')
-          .update({'like_count': safeLikes})
-          .eq('id', postId);
+      await _dbHelper.setForumPostVote(postId, reaction);
+      await _fetchPosts();
     } catch (e) {
-      debugPrint('Gagal update like: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal memperbarui vote: $e')));
+      }
     }
   }
 
   void _toggleBookmarkUI(int index) {
     setState(() {
-      _posts[index]['is_bookmarked'] = !(_posts[index]['is_bookmarked'] ?? false);
+      _posts[index]['is_bookmarked'] =
+          !(_posts[index]['is_bookmarked'] ?? false);
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(_posts[index]['is_bookmarked'] == true ? 'Postingan disimpan' : 'Batal menyimpan'),
+        content: Text(
+          _posts[index]['is_bookmarked'] == true
+              ? 'Postingan disimpan'
+              : 'Batal menyimpan',
+        ),
         duration: const Duration(seconds: 1),
       ),
     );
@@ -125,9 +129,7 @@ class _ForumTabState extends State<ForumTab> {
   Future<void> _openDetailPage(int postId) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ForumDetailPage(postId: postId),
-      ),
+      MaterialPageRoute(builder: (_) => ForumDetailPage(postId: postId)),
     );
     _fetchPosts();
   }
@@ -149,7 +151,10 @@ class _ForumTabState extends State<ForumTab> {
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 16,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFE8EAF6),
                     borderRadius: BorderRadius.circular(16),
@@ -162,7 +167,11 @@ class _ForumTabState extends State<ForumTab> {
                           color: Color(0xFF6C5CE7),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.add, color: Colors.white, size: 20),
+                        child: const Icon(
+                          Icons.add,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       const Text(
@@ -204,13 +213,20 @@ class _ForumTabState extends State<ForumTab> {
                     final postId = post['id'] as int;
                     final user = post['users'] ?? {};
                     final category = post['forum_categories'];
-                    final categoryName = category != null ? category['name'] : 'Umum';
-                    final displayName = user['full_name'] ?? user['username'] ?? 'User';
-                    final likes = post['like_count'] ?? 0;
-                    final isLiked = _likedPostIds.contains(postId);
+                    final categoryName = category != null
+                        ? category['name']
+                        : 'Umum';
+                    final displayName =
+                        user['full_name'] ?? user['username'] ?? 'User';
+                    final score =
+                        (post['like_count'] as int? ?? 0) -
+                        (post['dislike_count'] as int? ?? 0);
+                    final vote = _postVotes[postId];
 
                     final repliesCountData = post['forum_replies'] as List?;
-                    final replies = (repliesCountData != null && repliesCountData.isNotEmpty)
+                    final replies =
+                        (repliesCountData != null &&
+                            repliesCountData.isNotEmpty)
                         ? (repliesCountData.first['count'] as int? ?? 0)
                         : 0;
                     final isBookmarked = post['is_bookmarked'] ?? false;
@@ -235,22 +251,49 @@ class _ForumTabState extends State<ForumTab> {
                                   CircleAvatar(
                                     radius: 18,
                                     backgroundColor: const Color(0xFF6C5CE7),
-                                    backgroundImage: user['avatar_url'] != null ? NetworkImage(user['avatar_url']) : null,
+                                    backgroundImage: user['avatar_url'] != null
+                                        ? NetworkImage(user['avatar_url'])
+                                        : null,
                                     child: user['avatar_url'] == null
-                                        ? Text(displayName.substring(0, 1).toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))
+                                        ? Text(
+                                            displayName
+                                                .substring(0, 1)
+                                                .toUpperCase(),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                            ),
+                                          )
                                         : null,
                                   ),
                                   const SizedBox(width: 10),
                                   Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                      Text(_formatTimeAgo(post['created_at']), style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                      Text(
+                                        displayName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      Text(
+                                        _formatTimeAgo(post['created_at']),
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 11,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   const Spacer(),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFEDF2FF),
                                       borderRadius: BorderRadius.circular(12),
@@ -282,30 +325,43 @@ class _ForumTabState extends State<ForumTab> {
                               // Footer Action: Like, Balasan, dan Bookmark
                               Row(
                                 children: [
-                                  // Tombol Like (Toggle)
-                                  InkWell(
-                                    onTap: () => _toggleLike(index),
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            isLiked ? Icons.thumb_up : Icons.thumb_up_alt_outlined,
-                                            size: 18,
-                                            color: isLiked ? const Color(0xFF6C63FF) : Colors.grey,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            '$likes',
-                                            style: TextStyle(
-                                              color: isLiked ? const Color(0xFF6C63FF) : Colors.grey,
-                                              fontWeight: isLiked ? FontWeight.bold : FontWeight.normal,
-                                            ),
-                                          ),
-                                        ],
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Vote naik',
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () =>
+                                            _toggleVote(index, 'LIKE'),
+                                        icon: Icon(
+                                          Icons.keyboard_arrow_up_rounded,
+                                          color: vote == 'LIKE'
+                                              ? const Color(0xFF6C63FF)
+                                              : Colors.grey,
+                                        ),
                                       ),
-                                    ),
+                                      Text(
+                                        '$score',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: vote == null
+                                              ? Colors.grey.shade700
+                                              : const Color(0xFF6C63FF),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Vote turun',
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () =>
+                                            _toggleVote(index, 'DISLIKE'),
+                                        icon: Icon(
+                                          Icons.keyboard_arrow_down_rounded,
+                                          color: vote == 'DISLIKE'
+                                              ? Colors.redAccent
+                                              : Colors.grey,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   const SizedBox(width: 16),
 
@@ -314,14 +370,23 @@ class _ForumTabState extends State<ForumTab> {
                                     onTap: () => _openDetailPage(postId),
                                     borderRadius: BorderRadius.circular(8),
                                     child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 4,
+                                      ),
                                       child: Row(
                                         children: [
-                                          const Icon(Icons.chat_bubble_outline, size: 18, color: Colors.grey),
+                                          const Icon(
+                                            Icons.chat_bubble_outline,
+                                            size: 18,
+                                            color: Colors.grey,
+                                          ),
                                           const SizedBox(width: 6),
                                           Text(
                                             '$replies balasan',
-                                            style: const TextStyle(color: Colors.grey),
+                                            style: const TextStyle(
+                                              color: Colors.grey,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -335,8 +400,12 @@ class _ForumTabState extends State<ForumTab> {
                                     constraints: const BoxConstraints(),
                                     padding: EdgeInsets.zero,
                                     icon: Icon(
-                                      isBookmarked ? Icons.bookmark : Icons.bookmark_border_rounded,
-                                      color: isBookmarked ? const Color(0xFF6C63FF) : Colors.grey,
+                                      isBookmarked
+                                          ? Icons.bookmark
+                                          : Icons.bookmark_border_rounded,
+                                      color: isBookmarked
+                                          ? const Color(0xFF6C63FF)
+                                          : Colors.grey,
                                       size: 20,
                                     ),
                                     onPressed: () => _toggleBookmarkUI(index),

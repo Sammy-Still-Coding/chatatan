@@ -10,8 +10,7 @@ class DbHelper {
   // SUPABASE
   // ============================================================
 
-  final SupabaseClient _client =
-      Supabase.instance.client;
+  final SupabaseClient _client = Supabase.instance.client;
 
   // ============================================================
   // AUTH
@@ -37,9 +36,7 @@ class DbHelper {
     final response = await _client.auth.signUp(
       email: email,
       password: password,
-      data: {
-        'username': username,
-      },
+      data: {'username': username},
     );
 
     return response;
@@ -91,9 +88,7 @@ class DbHelper {
   // GET OTHER PROFILE
   // ------------------------------------------------------------
 
-  Future<Map<String, dynamic>?> getProfile(
-    String userId,
-  ) async {
+  Future<Map<String, dynamic>?> getProfile(String userId) async {
     final response = await _client
         .from('users')
         .select()
@@ -134,15 +129,13 @@ class DbHelper {
       return null;
     }
 
-    final gamification =
-        await getMyGamification();
+    final gamification = await getMyGamification();
 
     if (gamification == null) {
       return null;
     }
 
-    final petId =
-        gamification['pet_id'];
+    final petId = gamification['pet_id'];
 
     if (petId == null) {
       return null;
@@ -162,20 +155,13 @@ class DbHelper {
   // ============================================================
 
   Future<Map<String, dynamic>> getHomeData() async {
-    final profile =
-        await getMyProfile();
+    final profile = await getMyProfile();
 
-    final gamification =
-        await getMyGamification();
+    final gamification = await getMyGamification();
 
-    final pet =
-        await getMyPet();
+    final pet = await getMyPet();
 
-    return {
-      'profile': profile,
-      'gamification': gamification,
-      'pet': pet,
-    };
+    return {'profile': profile, 'gamification': gamification, 'pet': pet};
   }
 
   // ============================================================
@@ -186,21 +172,13 @@ class DbHelper {
   // GET FORUM POSTS
   // ------------------------------------------------------------
 
-  Future<List<Map<String, dynamic>>>
-      getForumPosts() async {
+  Future<List<Map<String, dynamic>>> getForumPosts() async {
     final response = await _client
         .from('forum_posts')
-        .select(
-          '*, users(username, avatar_url)',
-        )
-        .order(
-          'created_at',
-          ascending: false,
-        );
+        .select('*, users(username, avatar_url)')
+        .order('created_at', ascending: false);
 
-    return List<Map<String, dynamic>>.from(
-      response,
-    );
+    return List<Map<String, dynamic>>.from(response);
   }
 
   // ------------------------------------------------------------
@@ -214,14 +192,10 @@ class DbHelper {
     final user = currentUser;
 
     if (user == null) {
-      throw Exception(
-        'User belum login.',
-      );
+      throw Exception('User belum login.');
     }
 
-    await _client
-        .from('forum_posts')
-        .insert({
+    await _client.from('forum_posts').insert({
       'user_id': user.id,
       'title': title,
       'content': content,
@@ -229,13 +203,246 @@ class DbHelper {
   }
 
   // ============================================================
+  // FORUM - VOTE, ATTACHMENT, DAN LIBRARY
+  // ============================================================
+
+  Future<String?> getForumPostVote(int postId) async {
+    final user = currentUser;
+    if (user == null) return null;
+    final row = await _client
+        .from('forum_reactions')
+        .select('reaction')
+        .eq('post_id', postId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+    return row?['reaction']?.toString();
+  }
+
+  Future<String?> setForumPostVote(int postId, String reaction) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    if (reaction != 'LIKE' && reaction != 'DISLIKE') {
+      throw ArgumentError.value(reaction, 'reaction');
+    }
+
+    final existing = await _client
+        .from('forum_reactions')
+        .select('id, reaction')
+        .eq('post_id', postId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+    if (existing?['reaction'] == reaction) {
+      await _client.from('forum_reactions').delete().eq('id', existing!['id']);
+      return null;
+    }
+    if (existing != null) {
+      await _client
+          .from('forum_reactions')
+          .update({
+            'reaction': reaction,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', existing['id']);
+    } else {
+      await _client.from('forum_reactions').insert({
+        'post_id': postId,
+        'user_id': user.id,
+        'reaction': reaction,
+      });
+    }
+    return reaction;
+  }
+
+  Future<List<Map<String, dynamic>>> getForumAttachments(int postId) async {
+    final response = await _client
+        .from('forum_attachments')
+        .select('''
+          id, post_id, file_id, uploaded_by, curation_status,
+          curation_feedback, relevance_score, relevance_label, reviewed_at,
+          files (id, storage_path, original_name, mime_type, extension, file_size)
+        ''')
+        .eq('post_id', postId)
+        .order('created_at');
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  Future<void> uploadForumAttachment({
+    required int postId,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    final originalName = p.basename(fileName);
+    var extension = p
+        .extension(originalName)
+        .replaceFirst('.', '')
+        .toLowerCase();
+    if (extension == 'jpeg') extension = 'jpg';
+    if (extension.isEmpty) throw Exception('Ekstensi file tidak ditemukan.');
+
+    final storagePath =
+        'forum/' +
+        user.id +
+        '/attachments/' +
+        const Uuid().v4() +
+        '.' +
+        extension;
+    try {
+      await _client.storage
+          .from('chatatan-files')
+          .uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: FileOptions(contentType: _getMimeType(extension)),
+          );
+      final file = await _client
+          .from('files')
+          .insert({
+            'uploaded_by': user.id,
+            'storage_provider': 'SUPABASE',
+            'storage_path': storagePath,
+            'original_name': originalName,
+            'mime_type': _getMimeType(extension),
+            'extension': extension,
+            'file_size': bytes.length,
+          })
+          .select('id')
+          .single();
+      await _client.from('forum_attachments').insert({
+        'post_id': postId,
+        'file_id': file['id'],
+        'uploaded_by': user.id,
+        'curation_status': 'PENDING',
+      });
+    } catch (_) {
+      try {
+        await _client.storage.from('chatatan-files').remove([storagePath]);
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
+  /// Membagikan file yang sudah ada di Library tanpa mengunggah ulang ke Storage.
+  Future<void> attachLibraryItemsToForum({
+    required int postId,
+    required List<int> libraryItemIds,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    if (libraryItemIds.isEmpty) return;
+
+    final items = await _client
+        .from('library_items')
+        .select('id, file_id')
+        .eq('user_id', user.id)
+        .isFilter('deleted_at', null)
+        .inFilter('id', libraryItemIds);
+
+    if (items.length != libraryItemIds.length) {
+      throw Exception('Sebagian file Library tidak dapat dibagikan.');
+    }
+
+    final attachmentRows = <Map<String, dynamic>>[];
+    for (final item in items) {
+      final fileId = item['file_id'];
+      if (fileId == null) {
+        throw Exception('Item Library tanpa file tidak dapat dibagikan.');
+      }
+      attachmentRows.add({
+        'post_id': postId,
+        'file_id': fileId,
+        'uploaded_by': user.id,
+        'curation_status': 'PENDING',
+      });
+    }
+    await _client.from('forum_attachments').insert(attachmentRows);
+  }
+
+  Future<void> saveForumAttachmentToLibrary(int attachmentId) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    final attachment = await _client
+        .from('forum_attachments')
+        .select('file_id, files(original_name, extension, mime_type)')
+        .eq('id', attachmentId)
+        .single();
+    final files = attachment['files'];
+    if (files is! Map) throw Exception('File forum tidak ditemukan.');
+
+    var folder = await _client
+        .from('library_folders')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('name', 'Dari Forum')
+        .maybeSingle();
+    folder ??= await _client
+        .from('library_folders')
+        .insert({'user_id': user.id, 'name': 'Dari Forum'})
+        .select('id')
+        .single();
+
+    final extension = files['extension']?.toString() ?? '';
+    final mimeType = files['mime_type']?.toString() ?? _getMimeType(extension);
+    await _client.from('library_items').insert({
+      'user_id': user.id,
+      'folder_id': folder['id'],
+      'title': files['original_name']?.toString() ?? 'Dokumen dari Forum',
+      'description': 'Disimpan dari Forum',
+      'source_type': 'SHARED',
+      'content_type': _getContentType(extension, mimeType),
+      'file_id': attachment['file_id'],
+      'visibility': 'PRIVATE',
+      'is_favorite': false,
+    });
+  }
+
+  Future<bool> canCurateForumAttachments() async {
+    final user = currentUser;
+    if (user == null) return false;
+    final profile = await _client
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+    final role = profile?['role']?.toString().toLowerCase();
+    return role == 'admin' || role == 'dosen';
+  }
+
+  Future<void> curateForumAttachment(
+    int attachmentId, {
+    required String status,
+    double? relevanceScore,
+    String? relevanceLabel,
+    String? feedback,
+  }) async {
+    if (!await canCurateForumAttachments()) {
+      throw Exception('Hanya admin atau dosen yang dapat melakukan kurasi.');
+    }
+    if (status != 'PASSED' && status != 'FAILED') {
+      throw ArgumentError.value(status, 'status');
+    }
+    await _client
+        .from('forum_attachments')
+        .update({
+          'curation_status': status,
+          'relevance_score': relevanceScore,
+          'relevance_label': relevanceLabel?.trim().isEmpty ?? true
+              ? null
+              : relevanceLabel!.trim(),
+          'curation_feedback': feedback?.trim().isEmpty ?? true
+              ? null
+              : feedback!.trim(),
+          'reviewed_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', attachmentId);
+  }
+
+  // ============================================================
   // CHAT - RECENT CHAT
   // ============================================================
 
-  Future<List<Map<String, dynamic>>>
-      getRecentChats({
-    int limit = 3,
-  }) async {
+  Future<List<Map<String, dynamic>>> getRecentChats({int limit = 3}) async {
     final user = currentUser;
 
     if (user == null) {
@@ -249,25 +456,16 @@ class DbHelper {
     final memberships = await _client
         .from('conversation_members')
         .select('conversation_id')
-        .eq(
-          'user_id',
-          user.id,
-        );
+        .eq('user_id', user.id);
 
     if (memberships.isEmpty) {
       return [];
     }
 
-    final conversationIds =
-        memberships
-            .map(
-              (item) =>
-                  item['conversation_id'],
-            )
-            .where(
-              (id) => id != null,
-            )
-            .toList();
+    final conversationIds = memberships
+        .map((item) => item['conversation_id'])
+        .where((id) => id != null)
+        .toList();
 
     if (conversationIds.isEmpty) {
       return [];
@@ -280,27 +478,18 @@ class DbHelper {
     final conversations = await _client
         .from('conversations')
         .select()
-        .inFilter(
-          'id',
-          conversationIds,
-        )
-        .order(
-          'updated_at',
-          ascending: false,
-        )
+        .inFilter('id', conversationIds)
+        .order('updated_at', ascending: false)
         .limit(limit);
 
-    final result =
-        <Map<String, dynamic>>[];
+    final result = <Map<String, dynamic>>[];
 
     // ----------------------------------------------------------
     // 3. GET DETAILS
     // ----------------------------------------------------------
 
-    for (final conversation
-        in conversations) {
-      final conversationId =
-          conversation['id'];
+    for (final conversation in conversations) {
+      final conversationId = conversation['id'];
 
       // --------------------------------------------------------
       // LAST MESSAGE
@@ -308,21 +497,12 @@ class DbHelper {
 
       final messages = await _client
           .from('messages')
-          .select(
-            'id, sender_id, message_type, content, status, created_at',
-          )
-          .eq(
-            'conversation_id',
-            conversationId,
-          )
-          .order(
-            'created_at',
-            ascending: false,
-          )
+          .select('id, sender_id, message_type, content, status, created_at')
+          .eq('conversation_id', conversationId)
+          .order('created_at', ascending: false)
           .limit(1);
 
-      Map<String, dynamic>?
-          lastMessage;
+      Map<String, dynamic>? lastMessage;
 
       if (messages.isNotEmpty) {
         lastMessage = messages.first;
@@ -332,51 +512,33 @@ class DbHelper {
       // OTHER USER
       // --------------------------------------------------------
 
-      Map<String, dynamic>?
-          otherUser;
+      Map<String, dynamic>? otherUser;
 
-      if (conversation[
-              'conversation_type'] ==
-          'PRIVATE') {
+      if (conversation['conversation_type'] == 'PRIVATE') {
         final members = await _client
             .from('conversation_members')
             .select('user_id')
-            .eq(
-              'conversation_id',
-              conversationId,
-            )
-            .neq(
-              'user_id',
-              user.id,
-            )
+            .eq('conversation_id', conversationId)
+            .neq('user_id', user.id)
             .limit(1);
 
         if (members.isNotEmpty) {
-          final otherUserId =
-              members.first['user_id'];
+          final otherUserId = members.first['user_id'];
 
           if (otherUserId != null) {
             otherUser = await _client
                 .from('users')
-                .select(
-                  'id, username, avatar_url',
-                )
-                .eq(
-                  'id',
-                  otherUserId,
-                )
+                .select('id, username, avatar_url')
+                .eq('id', otherUserId)
                 .maybeSingle();
           }
         }
       }
 
       result.add({
-        'conversation':
-            conversation,
-        'last_message':
-            lastMessage,
-        'other_user':
-            otherUser,
+        'conversation': conversation,
+        'last_message': lastMessage,
+        'other_user': otherUser,
       });
     }
 
@@ -387,10 +549,7 @@ class DbHelper {
   // HOME - RECENT FORUMS
   // ============================================================
 
-  Future<List<Map<String, dynamic>>>
-      getRecentForums({
-    int limit = 3,
-  }) async {
+  Future<List<Map<String, dynamic>>> getRecentForums({int limit = 3}) async {
     final response = await _client
         .from('forum_posts')
         .select('''
@@ -404,15 +563,10 @@ class DbHelper {
           reply_count,
           created_at
         ''')
-        .order(
-          'created_at',
-          ascending: false,
-        )
+        .order('created_at', ascending: false)
         .limit(limit);
 
-    return List<Map<String, dynamic>>.from(
-      response,
-    );
+    return List<Map<String, dynamic>>.from(response);
   }
 
   // ============================================================
@@ -423,8 +577,7 @@ class DbHelper {
   // GET LIBRARY ITEMS
   // ------------------------------------------------------------
 
-  Future<List<Map<String, dynamic>>>
-      getLibraryItems({
+  Future<List<Map<String, dynamic>>> getLibraryItems({
     String? search,
     int? categoryId,
     int? folderId,
@@ -464,25 +617,15 @@ class DbHelper {
             height
           )
         ''')
-        .eq(
-          'user_id',
-          user.id,
-        )
-        .isFilter(
-          'deleted_at',
-          null,
-        );
+        .eq('user_id', user.id)
+        .isFilter('deleted_at', null);
 
     // ----------------------------------------------------------
     // SEARCH
     // ----------------------------------------------------------
 
-    if (search != null &&
-        search.trim().isNotEmpty) {
-      query = query.ilike(
-        'title',
-        '%${search.trim()}%',
-      );
+    if (search != null && search.trim().isNotEmpty) {
+      query = query.ilike('title', '%${search.trim()}%');
     }
 
     // ----------------------------------------------------------
@@ -490,10 +633,7 @@ class DbHelper {
     // ----------------------------------------------------------
 
     if (categoryId != null) {
-      query = query.eq(
-        'category_id',
-        categoryId,
-      );
+      query = query.eq('category_id', categoryId);
     }
 
     // ----------------------------------------------------------
@@ -501,24 +641,107 @@ class DbHelper {
     // ----------------------------------------------------------
 
     if (folderId != null) {
-      query = query.eq(
-        'folder_id',
-        folderId,
-      );
+      query = query.eq('folder_id', folderId);
     }
 
     // ----------------------------------------------------------
     // RESULT
     // ----------------------------------------------------------
 
-    final response = await query.order(
-      'updated_at',
-      ascending: false,
-    );
+    final response = await query.order('updated_at', ascending: false);
 
-    return List<Map<String, dynamic>>.from(
-      response,
-    );
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// Mengambil folder milik pengguna yang sedang masuk.
+  Future<List<Map<String, dynamic>>> getLibraryFolders() async {
+    final user = currentUser;
+    if (user == null) return [];
+
+    final response = await _client
+        .from('library_folders')
+        .select('id, parent_folder_id, name, description, color, icon')
+        .eq('user_id', user.id)
+        .order('name');
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// Kategori bersifat global sesuai skema database.
+  Future<List<Map<String, dynamic>>> getLibraryCategories() async {
+    final response = await _client
+        .from('library_categories')
+        .select('id, name, description, icon, color')
+        .order('name');
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  Future<void> createLibraryFolder({
+    required String name,
+    String? description,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+
+    await _client.from('library_folders').insert({
+      'user_id': user.id,
+      'name': name.trim(),
+      'description': description?.trim().isEmpty ?? true
+          ? null
+          : description!.trim(),
+    });
+  }
+
+  Future<void> updateLibraryItem(
+    int itemId, {
+    required String title,
+    String? description,
+    int? folderId,
+    int? categoryId,
+    required bool isFavorite,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+
+    await _client
+        .from('library_items')
+        .update({
+          'title': title.trim(),
+          'description': description?.trim().isEmpty ?? true
+              ? null
+              : description!.trim(),
+          'folder_id': folderId,
+          'category_id': categoryId,
+          'is_favorite': isFavorite,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', itemId)
+        .eq('user_id', user.id);
+  }
+
+  Future<void> setLibraryItemFavorite(int itemId, bool isFavorite) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+
+    await _client
+        .from('library_items')
+        .update({
+          'is_favorite': isFavorite,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', itemId)
+        .eq('user_id', user.id);
+  }
+
+  /// Soft delete menjaga file dan relasi lain tetap aman di database.
+  Future<void> deleteLibraryItem(int itemId) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+
+    await _client
+        .from('library_items')
+        .update({'deleted_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('id', itemId)
+        .eq('user_id', user.id);
   }
 
   // ============================================================
@@ -574,11 +797,7 @@ class DbHelper {
     // ============================================================
 
     final finalContentType =
-        contentType ??
-        _getContentType(
-          extension,
-          mimeType,
-        );
+        contentType ?? _getContentType(extension, mimeType);
 
     // ============================================================
     // STORAGE FOLDER
@@ -615,10 +834,7 @@ class DbHelper {
           .uploadBinary(
             storagePath,
             bytes,
-            fileOptions: FileOptions(
-              contentType: mimeType,
-              upsert: false,
-            ),
+            fileOptions: FileOptions(contentType: mimeType, upsert: false),
           );
 
       // ==========================================================
@@ -667,21 +883,14 @@ class DbHelper {
       // RETURN
       // ==========================================================
 
-      return {
-        'file': fileRecord,
-        'library_item': libraryRecord,
-      };
+      return {'file': fileRecord, 'library_item': libraryRecord};
     } catch (e) {
       // ==========================================================
       // CLEANUP STORAGE
       // ==========================================================
 
       try {
-        await _client.storage
-            .from('chatatan-files')
-            .remove([
-              storagePath,
-            ]);
+        await _client.storage.from('chatatan-files').remove([storagePath]);
       } catch (_) {
         // Jangan menutupi error utama
       }
@@ -694,41 +903,30 @@ class DbHelper {
   // LIBRARY - UPLOAD IMAGE
   // ============================================================
 
-  Future<Map<String, dynamic>>
-      uploadLibraryImage({
+  Future<Map<String, dynamic>> uploadLibraryImage({
     required XFile image,
   }) async {
     final user = currentUser;
 
     if (user == null) {
-      throw Exception(
-        'User belum login.',
-      );
+      throw Exception('User belum login.');
     }
 
-    final Uint8List bytes =
-        await image.readAsBytes();
+    final Uint8List bytes = await image.readAsBytes();
 
-    final originalName =
-        image.name;
+    final originalName = image.name;
 
-    var extension = originalName
-        .contains('.')
-        ? originalName
-            .split('.')
-            .last
-            .toLowerCase()
+    var extension = originalName.contains('.')
+        ? originalName.split('.').last.toLowerCase()
         : 'jpg';
 
     if (extension == 'jpeg') {
       extension = 'jpg';
     }
 
-    final mimeType =
-        _getMimeType(extension);
+    final mimeType = _getMimeType(extension);
 
-    final fileUuid =
-        const Uuid().v4();
+    final fileUuid = const Uuid().v4();
 
     final storagePath =
         'library/${user.id}/'
@@ -745,84 +943,56 @@ class DbHelper {
           .uploadBinary(
             storagePath,
             bytes,
-            fileOptions:
-                FileOptions(
-              contentType:
-                  mimeType,
-              upsert: false,
-            ),
+            fileOptions: FileOptions(contentType: mimeType, upsert: false),
           );
 
       // ========================================================
       // 2. FILES
       // ========================================================
 
-      final fileRecord =
-          await _client
-              .from('files')
-              .insert({
-        'uploaded_by':
-            user.id,
-        'storage_provider':
-            'SUPABASE',
-        'storage_path':
-            storagePath,
-        'original_name':
-            originalName,
-        'mime_type':
-            mimeType,
-        'extension':
-            extension,
-        'file_size':
-            bytes.length,
-      }).select().single();
+      final fileRecord = await _client
+          .from('files')
+          .insert({
+            'uploaded_by': user.id,
+            'storage_provider': 'SUPABASE',
+            'storage_path': storagePath,
+            'original_name': originalName,
+            'mime_type': mimeType,
+            'extension': extension,
+            'file_size': bytes.length,
+          })
+          .select()
+          .single();
 
-      final fileId =
-          fileRecord['id'];
+      final fileId = fileRecord['id'];
 
       // ========================================================
       // 3. LIBRARY ITEMS
       // ========================================================
 
-      final libraryRecord =
-          await _client
-              .from('library_items')
-              .insert({
-        'user_id':
-            user.id,
-        'title':
-            originalName,
-        'description':
-            'Image uploaded to Library',
-        'source_type':
-            'UPLOAD',
-        'content_type':
-            'IMAGE',
-        'file_id':
-            fileId,
-        'visibility':
-            'PRIVATE',
-        'is_favorite':
-            false,
-      }).select().single();
+      final libraryRecord = await _client
+          .from('library_items')
+          .insert({
+            'user_id': user.id,
+            'title': originalName,
+            'description': 'Image uploaded to Library',
+            'source_type': 'UPLOAD',
+            'content_type': 'IMAGE',
+            'file_id': fileId,
+            'visibility': 'PRIVATE',
+            'is_favorite': false,
+          })
+          .select()
+          .single();
 
-      return {
-        'file':
-            fileRecord,
-        'library_item':
-            libraryRecord,
-      };
+      return {'file': fileRecord, 'library_item': libraryRecord};
     } catch (e) {
       // ========================================================
       // CLEANUP
       // ========================================================
 
       try {
-        await _client.storage
-            .from('chatatan-files')
-            .remove([
-          storagePath,
-        ]);
+        await _client.storage.from('chatatan-files').remove([storagePath]);
       } catch (_) {}
 
       rethrow;
@@ -840,14 +1010,9 @@ class DbHelper {
     try {
       return await _client.storage
           .from('chatatan-files')
-          .createSignedUrl(
-            storagePath,
-            expiresIn,
-          );
+          .createSignedUrl(storagePath, expiresIn);
     } catch (e) {
-      throw Exception(
-        'Gagal membuat URL file: $e',
-      );
+      throw Exception('Gagal membuat URL file: $e');
     }
   }
 
@@ -855,9 +1020,7 @@ class DbHelper {
   // LIBRARY - MIME TYPE
   // ============================================================
 
-  String _getMimeType(
-    String extension,
-  ) {
+  String _getMimeType(String extension) {
     switch (extension.toLowerCase()) {
       case 'jpg':
       case 'jpeg':
@@ -882,22 +1045,19 @@ class DbHelper {
         return 'application/msword';
 
       case 'docx':
-        return
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
       case 'xls':
         return 'application/vnd.ms-excel';
 
       case 'xlsx':
-        return
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
       case 'ppt':
         return 'application/vnd.ms-powerpoint';
 
       case 'pptx':
-        return
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
       default:
         return 'application/octet-stream';
@@ -908,14 +1068,9 @@ class DbHelper {
   // LIBRARY - CONTENT TYPE
   // ============================================================
 
-  String _getContentType(
-    String extension,
-    String mimeType,
-  ) {
+  String _getContentType(String extension, String mimeType) {
     // IMAGE
-    if (mimeType.startsWith(
-      'image/',
-    )) {
+    if (mimeType.startsWith('image/')) {
       return 'IMAGE';
     }
 
@@ -925,14 +1080,7 @@ class DbHelper {
     }
 
     // DOCUMENT
-    if ([
-      'doc',
-      'docx',
-      'xls',
-      'xlsx',
-      'ppt',
-      'pptx',
-    ].contains(extension)) {
+    if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].contains(extension)) {
       return 'DOCUMENT';
     }
 
@@ -981,7 +1129,9 @@ class DbHelper {
         .eq('user_id', targetUserId);
 
     final myIds = myMemberships.map((e) => e['conversation_id']).toSet();
-    final targetIds = targetMemberships.map((e) => e['conversation_id']).toSet();
+    final targetIds = targetMemberships
+        .map((e) => e['conversation_id'])
+        .toSet();
     final sharedConvIds = myIds.intersection(targetIds);
 
     // Jika sudah ada ruang chat bersama
@@ -999,11 +1149,15 @@ class DbHelper {
     }
 
     // Jika belum ada, buat percakapan PRIVATE baru
-    final newConv = await _client.from('conversations').insert({
-      'conversation_type': 'PRIVATE',
-      'title': 'Private Chat',
-      'created_by' : user.id,
-    }).select('id').single();
+    final newConv = await _client
+        .from('conversations')
+        .insert({
+          'conversation_type': 'PRIVATE',
+          'title': 'Private Chat',
+          'created_by': user.id,
+        })
+        .select('id')
+        .single();
 
     final newConvId = newConv['id'] as int;
 
@@ -1074,11 +1228,15 @@ class DbHelper {
     if (user == null) throw Exception('User belum login');
 
     // Buat baris baru di tabel conversations (tipe GROUP)
-    final newConv = await _client.from('conversations').insert({
-      'conversation_type': 'GROUP',
-      'title': title,
-      'created_by': user.id,
-    }).select('id').single();
+    final newConv = await _client
+        .from('conversations')
+        .insert({
+          'conversation_type': 'GROUP',
+          'title': title,
+          'created_by': user.id,
+        })
+        .select('id')
+        .single();
 
     final int conversationId = newConv['id'] as int;
 
@@ -1086,10 +1244,9 @@ class DbHelper {
     final Set<String> allMemberIds = {user.id, ...selectedUserIds};
 
     // Format data untuk batch insert ke conversation_members
-    final membersData = allMemberIds.map((userId) => {
-      'conversation_id': conversationId,
-      'user_id': userId,
-    }).toList();
+    final membersData = allMemberIds
+        .map((userId) => {'conversation_id': conversationId, 'user_id': userId})
+        .toList();
 
     await _client.from('conversation_members').insert(membersData);
 
@@ -1125,7 +1282,7 @@ class DbHelper {
 
     return groups;
   }
-  
+
   Future<String> getFileSignedUrl(int fileId) async {
     final response = await _client
         .from('files')
@@ -1133,21 +1290,15 @@ class DbHelper {
         .eq('id', fileId)
         .single();
 
-    final storagePath =
-        response['storage_path']?.toString();
+    final storagePath = response['storage_path']?.toString();
 
     if (storagePath == null || storagePath.isEmpty) {
-      throw Exception(
-        'Storage path file tidak ditemukan',
-      );
+      throw Exception('Storage path file tidak ditemukan');
     }
 
     final signedUrl = await _client.storage
         .from('chatatan-files')
-        .createSignedUrl(
-          storagePath,
-          60 * 60,
-        );
+        .createSignedUrl(storagePath, 60 * 60);
 
     return signedUrl;
   }
@@ -1161,10 +1312,9 @@ class DbHelper {
 
     final convIdInt = int.tryParse(conversationId.toString()) ?? conversationId;
 
-    final membersData = userIds.map((userId) => {
-      'conversation_id': convIdInt,
-      'user_id': userId,
-    }).toList();
+    final membersData = userIds
+        .map((userId) => {'conversation_id': convIdInt, 'user_id': userId})
+        .toList();
 
     await _client.from('conversation_members').insert(membersData);
   }

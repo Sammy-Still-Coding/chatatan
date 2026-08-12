@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'db_helper.dart';
 
 class ForumDetailPage extends StatefulWidget {
   final int postId;
@@ -11,16 +12,20 @@ class ForumDetailPage extends StatefulWidget {
 
 class _ForumDetailPageState extends State<ForumDetailPage> {
   final _supabase = Supabase.instance.client;
+  final _dbHelper = DbHelper();
   final _replyController = TextEditingController();
   final _focusNode = FocusNode();
 
   Map<String, dynamic>? _post;
   List<Map<String, dynamic>> _replies = [];
   bool _isLoading = true;
+  List<Map<String, dynamic>> _attachments = [];
+  bool _canCurate = false;
 
   // --- STATE TOGGLE LIKE (Mencegah Spam Like) ---
-  bool _isPostLiked = false;
-  final Set<int> _likedReplyIds = {}; // Menyimpan ID reply yang sudah di-like user
+  String? _postVote;
+  final Set<int> _likedReplyIds =
+      {}; // Menyimpan ID reply yang sudah di-like user
 
   // --- STATE MEMBALAS BALASAN (Reply-to-Reply) ---
   Map<String, dynamic>? _replyingTo; // Data reply yang sedang dibalas
@@ -45,24 +50,39 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     setState(() => _isLoading = true);
     try {
       // 1. Fetch Post Detail
-      final postRes = await _supabase.from('forum_posts').select('''
+      final postRes = await _supabase
+          .from('forum_posts')
+          .select('''
         *,
         users:user_id (username, full_name, avatar_url),
         forum_categories:category_id (name)
-      ''').eq('id', widget.postId).single();
+      ''')
+          .eq('id', widget.postId)
+          .single();
 
       // 2. Fetch Replies (Mengambil data pembalas + data orang yang dibalas via parent_reply_id)
-      final repliesRes = await _supabase.from('forum_replies').select('''
+      final repliesRes = await _supabase
+          .from('forum_replies')
+          .select('''
         *,
         users:user_id (username, full_name, avatar_url),
         parent:parent_reply_id (
           users:user_id (username, full_name)
         )
-      ''').eq('post_id', widget.postId).order('created_at', ascending: true);
+      ''')
+          .eq('post_id', widget.postId)
+          .order('created_at', ascending: true);
 
+      final attachments = await _dbHelper.getForumAttachments(widget.postId);
+      final postVote = await _dbHelper.getForumPostVote(widget.postId);
+      final canCurate = await _dbHelper.canCurateForumAttachments();
+      if (!mounted) return;
       setState(() {
         _post = postRes;
         _replies = List<Map<String, dynamic>>.from(repliesRes);
+        _attachments = attachments;
+        _postVote = postVote;
+        _canCurate = canCurate;
       });
     } catch (e) {
       debugPrint('Error load detail: $e');
@@ -83,28 +103,223 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     return 'Baru saja';
   }
 
-  // --- TOGGLE LIKE POST UTAMA (+1 / -1) ---
-  Future<void> _togglePostLike() async {
+  Future<void> _togglePostVote(String reaction) async {
     if (_post == null) return;
-    final currentLikes = (_post!['like_count'] as int?) ?? 0;
-    
-    // Jika sudah di-like, kurangi 1 (Unlike). Jika belum, tambah 1 (Like).
-    final newLikes = _isPostLiked ? (currentLikes - 1) : (currentLikes + 1);
-    final safeLikes = newLikes < 0 ? 0 : newLikes;
-
-    setState(() {
-      _isPostLiked = !_isPostLiked;
-      _post!['like_count'] = safeLikes;
-    });
-
     try {
-      await _supabase
-          .from('forum_posts')
-          .update({'like_count': safeLikes})
-          .eq('id', widget.postId);
+      await _dbHelper.setForumPostVote(widget.postId, reaction);
+      await _loadPostData();
     } catch (e) {
-      debugPrint('Gagal update like post: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal memperbarui vote: $e')));
+      }
     }
+  }
+
+  Future<void> _saveAttachmentToLibrary(int attachmentId) async {
+    try {
+      await _dbHelper.saveForumAttachmentToLibrary(attachmentId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('File disimpan ke Library › Dari Forum'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal menyimpan file: $e')));
+      }
+    }
+  }
+
+  Future<void> _showCuration(Map<String, dynamic> attachment) async {
+    String status = attachment['curation_status']?.toString() == 'FAILED'
+        ? 'FAILED'
+        : 'PASSED';
+    final scoreController = TextEditingController(
+      text: attachment['relevance_score']?.toString() ?? '',
+    );
+    final labelController = TextEditingController(
+      text: attachment['relevance_label']?.toString() ?? '',
+    );
+    final feedbackController = TextEditingController(
+      text: attachment['curation_feedback']?.toString() ?? '',
+    );
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Kurasi file'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: status,
+                  decoration: const InputDecoration(labelText: 'Keputusan'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'PASSED',
+                      child: Text('Layak dibagikan'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'FAILED',
+                      child: Text('Tidak layak'),
+                    ),
+                  ],
+                  onChanged: (value) => setDialogState(() => status = value!),
+                ),
+                TextField(
+                  controller: scoreController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Relevansi belajar (0–100)',
+                  ),
+                ),
+                TextField(
+                  controller: labelController,
+                  decoration: const InputDecoration(
+                    labelText: 'Label relevansi',
+                  ),
+                ),
+                TextField(
+                  controller: feedbackController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Catatan kurasi',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (save == true) {
+      try {
+        await _dbHelper.curateForumAttachment(
+          int.parse(attachment['id'].toString()),
+          status: status,
+          relevanceScore: double.tryParse(scoreController.text),
+          relevanceLabel: labelController.text,
+          feedback: feedbackController.text,
+        );
+        await _loadPostData();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Gagal menyimpan kurasi: $e')));
+        }
+      }
+    }
+    scoreController.dispose();
+    labelController.dispose();
+    feedbackController.dispose();
+  }
+
+  Widget _buildAttachments() {
+    if (_attachments.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        const Text(
+          'File dibagikan',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        ..._attachments.map((attachment) {
+          final file = attachment['files'] is Map
+              ? Map<String, dynamic>.from(attachment['files'] as Map)
+              : <String, dynamic>{};
+          final status = attachment['curation_status']?.toString() ?? 'PENDING';
+          final score = attachment['relevance_score'];
+          final label = attachment['relevance_label']?.toString();
+          final passed = status == 'PASSED';
+          final statusColor = passed
+              ? Colors.green
+              : status == 'FAILED'
+              ? Colors.red
+              : Colors.orange;
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            color: const Color(0xFFF8F8FF),
+            child: ListTile(
+              leading: const Icon(
+                Icons.description_outlined,
+                color: Color(0xFF6C5CE7),
+              ),
+              title: Text(file['original_name']?.toString() ?? 'File'),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    status == 'PENDING'
+                        ? 'Menunggu kurasi'
+                        : status == 'PASSED'
+                        ? 'Lolos kurasi'
+                        : 'Tidak lolos kurasi',
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (score != null)
+                    Text(
+                      'Relevansi belajar: ' +
+                          score.toString() +
+                          '/100' +
+                          (label == null ? '' : ' · ' + label),
+                    ),
+                  if ((attachment['curation_feedback']?.toString() ?? '')
+                      .isNotEmpty)
+                    Text(attachment['curation_feedback'].toString()),
+                ],
+              ),
+              trailing: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: passed
+                        ? 'Simpan ke Library'
+                        : 'Belum dapat disimpan',
+                    onPressed: passed
+                        ? () => _saveAttachmentToLibrary(
+                            int.parse(attachment['id'].toString()),
+                          )
+                        : null,
+                    icon: const Icon(Icons.library_add_outlined),
+                  ),
+                  if (_canCurate)
+                    IconButton(
+                      tooltip: 'Kurasi file',
+                      onPressed: () => _showCuration(attachment),
+                      icon: const Icon(Icons.verified_outlined),
+                    ),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
+    );
   }
 
   // --- TOGGLE LIKE BALASAN / REPLY (+1 / -1) ---
@@ -142,10 +357,7 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     final username = user['username'] ?? user['full_name'] ?? 'User';
 
     setState(() {
-      _replyingTo = {
-        'id': reply['id'],
-        'username': username,
-      };
+      _replyingTo = {'id': reply['id'], 'username': username};
     });
 
     // Otomatis fokus ke kolom input
@@ -181,17 +393,18 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
 
       // Increment reply_count di forum_posts
       final currentReplyCount = (_post?['reply_count'] as int?) ?? 0;
-      await _supabase.from('forum_posts').update({
-        'reply_count': currentReplyCount + 1,
-      }).eq('id', widget.postId);
+      await _supabase
+          .from('forum_posts')
+          .update({'reply_count': currentReplyCount + 1})
+          .eq('id', widget.postId);
 
       _replyController.clear();
       _cancelReplying();
       _loadPostData();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal mengirim balasan: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal mengirim balasan: $e')));
     }
   }
 
@@ -201,7 +414,9 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(_isBookmarked ? 'Postingan disimpan' : 'Batal menyimpan postingan'),
+        content: Text(
+          _isBookmarked ? 'Postingan disimpan' : 'Batal menyimpan postingan',
+        ),
         duration: const Duration(seconds: 1),
       ),
     );
@@ -214,20 +429,31 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     }
 
     if (_post == null) {
-      return const Scaffold(body: Center(child: Text('Postingan tidak ditemukan')));
+      return const Scaffold(
+        body: Center(child: Text('Postingan tidak ditemukan')),
+      );
     }
 
     final user = _post!['users'] ?? {};
     final category = _post!['forum_categories'] ?? {};
     final categoryName = category['name'] ?? 'Umum';
     final displayName = user['full_name'] ?? user['username'] ?? 'User';
-    final likes = _post!['like_count'] ?? 0;
+    final score =
+        (_post!['like_count'] as int? ?? 0) -
+        (_post!['dislike_count'] as int? ?? 0);
     final repliesCount = _replies.length;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FB),
       appBar: AppBar(
-        title: const Text('Detail Forum', style: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Detail Forum',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         backgroundColor: Colors.white,
         elevation: 0.5,
         iconTheme: const IconThemeData(color: Colors.black),
@@ -255,75 +481,132 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                             CircleAvatar(
                               radius: 20,
                               backgroundColor: const Color(0xFF6C5CE7),
-                              backgroundImage: user['avatar_url'] != null ? NetworkImage(user['avatar_url']) : null,
+                              backgroundImage: user['avatar_url'] != null
+                                  ? NetworkImage(user['avatar_url'])
+                                  : null,
                               child: user['avatar_url'] == null
-                                  ? Text(displayName.substring(0, 1).toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                                  ? Text(
+                                      displayName.substring(0, 1).toUpperCase(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    )
                                   : null,
                             ),
                             const SizedBox(width: 12),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                                Text(_formatTimeAgo(_post!['created_at']), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                Text(
+                                  displayName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                Text(
+                                  _formatTimeAgo(_post!['created_at']),
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                ),
                               ],
                             ),
                             const Spacer(),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFEDF2FF),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
                                 '#$categoryName',
-                                style: const TextStyle(color: Color(0xFF4C6EF5), fontWeight: FontWeight.bold, fontSize: 12),
+                                style: const TextStyle(
+                                  color: Color(0xFF4C6EF5),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 14),
 
-                        if (_post!['title'] != null && _post!['title'].toString().isNotEmpty) ...[
-                          Text(_post!['title'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        if (_post!['title'] != null &&
+                            _post!['title'].toString().isNotEmpty) ...[
+                          Text(
+                            _post!['title'],
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                           const SizedBox(height: 6),
                         ],
-                        Text(_post!['content'] ?? '', style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.black87)),
+                        Text(
+                          _post!['content'] ?? '',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            height: 1.4,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        _buildAttachments(),
                         const SizedBox(height: 16),
 
                         Row(
                           children: [
-                            // Tombol Like Post (Toggle + Indicator Aktif)
-                            InkWell(
-                              onTap: _togglePostLike,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      _isPostLiked ? Icons.thumb_up : Icons.thumb_up_alt_outlined,
-                                      size: 18,
-                                      color: _isPostLiked ? const Color(0xFF6C63FF) : Colors.grey,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '$likes',
-                                      style: TextStyle(
-                                        color: _isPostLiked ? const Color(0xFF6C63FF) : Colors.grey,
-                                        fontWeight: _isPostLiked ? FontWeight.bold : FontWeight.normal,
-                                      ),
-                                    ),
-                                  ],
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Vote naik',
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: () => _togglePostVote('LIKE'),
+                                  icon: Icon(
+                                    Icons.keyboard_arrow_up_rounded,
+                                    color: _postVote == 'LIKE'
+                                        ? const Color(0xFF6C63FF)
+                                        : Colors.grey,
+                                  ),
                                 ),
-                              ),
+                                Text(
+                                  '$score',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Vote turun',
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: () => _togglePostVote('DISLIKE'),
+                                  icon: Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    color: _postVote == 'DISLIKE'
+                                        ? Colors.redAccent
+                                        : Colors.grey,
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(width: 20),
                             Row(
                               children: [
-                                const Icon(Icons.chat_bubble_outline, size: 18, color: Colors.grey),
+                                const Icon(
+                                  Icons.chat_bubble_outline,
+                                  size: 18,
+                                  color: Colors.grey,
+                                ),
                                 const SizedBox(width: 6),
-                                Text('$repliesCount balasan', style: const TextStyle(color: Colors.grey)),
+                                Text(
+                                  '$repliesCount balasan',
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
                               ],
                             ),
                             const Spacer(),
@@ -331,8 +614,12 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                               constraints: const BoxConstraints(),
                               padding: EdgeInsets.zero,
                               icon: Icon(
-                                _isBookmarked ? Icons.bookmark : Icons.bookmark_border_rounded,
-                                color: _isBookmarked ? const Color(0xFF6C63FF) : Colors.grey,
+                                _isBookmarked
+                                    ? Icons.bookmark
+                                    : Icons.bookmark_border_rounded,
+                                color: _isBookmarked
+                                    ? const Color(0xFF6C63FF)
+                                    : Colors.grey,
                                 size: 22,
                               ),
                               onPressed: _toggleBookmarkUI,
@@ -344,7 +631,14 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                   ),
 
                   const SizedBox(height: 20),
-                  const Text('Balasan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                  const Text(
+                    'Balasan',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
                   const SizedBox(height: 12),
 
                   // --- LIST BALASAN ---
@@ -356,14 +650,21 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                       final reply = _replies[index];
                       final replyId = reply['id'];
                       final replyUser = reply['users'] ?? {};
-                      final replyName = replyUser['full_name'] ?? replyUser['username'] ?? 'User';
+                      final replyName =
+                          replyUser['full_name'] ??
+                          replyUser['username'] ??
+                          'User';
                       final replyLikes = reply['like_count'] ?? 0;
                       final isReplyLiked = _likedReplyIds.contains(replyId);
 
                       // Cek apakah balasan ini ditujukan ke orang lain (Parent Reply)
                       final parentData = reply['parent'];
-                      final parentUser = parentData != null ? parentData['users'] : null;
-                      final parentName = parentUser != null ? (parentUser['username'] ?? parentUser['full_name']) : null;
+                      final parentUser = parentData != null
+                          ? parentData['users']
+                          : null;
+                      final parentName = parentUser != null
+                          ? (parentUser['username'] ?? parentUser['full_name'])
+                          : null;
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 10),
@@ -378,9 +679,17 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                             CircleAvatar(
                               radius: 16,
                               backgroundColor: const Color(0xFF8E8E93),
-                              backgroundImage: replyUser['avatar_url'] != null ? NetworkImage(replyUser['avatar_url']) : null,
+                              backgroundImage: replyUser['avatar_url'] != null
+                                  ? NetworkImage(replyUser['avatar_url'])
+                                  : null,
                               child: replyUser['avatar_url'] == null
-                                  ? Text(replyName.substring(0, 1).toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 12))
+                                  ? Text(
+                                      replyName.substring(0, 1).toUpperCase(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    )
                                   : null,
                             ),
                             const SizedBox(width: 12),
@@ -390,23 +699,45 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                 children: [
                                   Row(
                                     children: [
-                                      Text(replyName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                      Text(
+                                        replyName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
                                       const SizedBox(width: 6),
-                                      Text(_formatTimeAgo(reply['created_at']), style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                      Text(
+                                        _formatTimeAgo(reply['created_at']),
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 11,
+                                        ),
+                                      ),
                                     ],
                                   ),
-                                  
+
                                   // Label "Membalas @username" jika ini balasan bertingkat
                                   if (parentName != null) ...[
                                     const SizedBox(height: 2),
                                     Text(
                                       'Membalas @$parentName',
-                                      style: const TextStyle(color: Color(0xFF6C5CE7), fontSize: 11, fontWeight: FontWeight.w600),
+                                      style: const TextStyle(
+                                        color: Color(0xFF6C5CE7),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ],
 
                                   const SizedBox(height: 4),
-                                  Text(reply['content'] ?? '', style: const TextStyle(fontSize: 14, color: Colors.black87)),
+                                  Text(
+                                    reply['content'] ?? '',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
                                   const SizedBox(height: 10),
 
                                   // Action Bar Balasan: Like & Tombol Balas
@@ -417,21 +748,33 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                         onTap: () => _toggleReplyLike(index),
                                         borderRadius: BorderRadius.circular(6),
                                         child: Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 4,
+                                            vertical: 2,
+                                          ),
                                           child: Row(
                                             children: [
                                               Icon(
-                                                isReplyLiked ? Icons.thumb_up : Icons.thumb_up_alt_outlined,
+                                                isReplyLiked
+                                                    ? Icons.thumb_up
+                                                    : Icons
+                                                          .thumb_up_alt_outlined,
                                                 size: 15,
-                                                color: isReplyLiked ? const Color(0xFF6C63FF) : Colors.grey,
+                                                color: isReplyLiked
+                                                    ? const Color(0xFF6C63FF)
+                                                    : Colors.grey,
                                               ),
                                               const SizedBox(width: 4),
                                               Text(
                                                 '$replyLikes',
                                                 style: TextStyle(
                                                   fontSize: 12,
-                                                  color: isReplyLiked ? const Color(0xFF6C63FF) : Colors.grey,
-                                                  fontWeight: isReplyLiked ? FontWeight.bold : FontWeight.normal,
+                                                  color: isReplyLiked
+                                                      ? const Color(0xFF6C63FF)
+                                                      : Colors.grey,
+                                                  fontWeight: isReplyLiked
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal,
                                                 ),
                                               ),
                                             ],
@@ -445,10 +788,17 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                         onTap: () => _setReplyingTo(reply),
                                         borderRadius: BorderRadius.circular(6),
                                         child: const Padding(
-                                          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 4,
+                                            vertical: 2,
+                                          ),
                                           child: Text(
                                             'Balas',
-                                            style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold),
+                                            style: TextStyle(
+                                              color: Colors.grey,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -472,7 +822,11 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
             decoration: const BoxDecoration(
               color: Colors.white,
               boxShadow: [
-                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2)),
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 4,
+                  offset: Offset(0, -2),
+                ),
               ],
             ),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -485,7 +839,10 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                   if (_replyingTo != null)
                     Container(
                       margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFEDF2FF),
                         borderRadius: BorderRadius.circular(8),
@@ -495,12 +852,20 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                         children: [
                           Text(
                             'Membalas @${_replyingTo!['username']}',
-                            style: const TextStyle(color: Color(0xFF4C6EF5), fontSize: 12, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Color(0xFF4C6EF5),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(width: 6),
                           InkWell(
                             onTap: _cancelReplying,
-                            child: const Icon(Icons.close, size: 16, color: Color(0xFF4C6EF5)),
+                            child: const Icon(
+                              Icons.close,
+                              size: 16,
+                              color: Color(0xFF4C6EF5),
+                            ),
                           ),
                         ],
                       ),
@@ -516,17 +881,29 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                             hintText: _replyingTo != null
                                 ? 'Balas @${_replyingTo!['username']}...'
                                 : 'Tulis balasan...',
-                            hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+                            hintStyle: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 14,
+                            ),
                             filled: true,
                             fillColor: const Color(0xFFF5F6FB),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        icon: const Icon(Icons.send_rounded, color: Color(0xFF6C5CE7)),
+                        icon: const Icon(
+                          Icons.send_rounded,
+                          color: Color(0xFF6C5CE7),
+                        ),
                         onPressed: _sendReply,
                       ),
                     ],
