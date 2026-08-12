@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'db_helper.dart';
 import 'community_chat_page.dart';
+import 'create_forum_modal.dart';
+import 'forum_tab.dart';
 
 class CommunityPage extends StatefulWidget {
   const CommunityPage({super.key});
@@ -168,6 +170,22 @@ class _CommunityPageState extends State<CommunityPage> {
         );
       },
     );
+  }
+
+  void _openCreateForumModal() async {
+    // Hanya jalankan jika tab aktif saat ini adalah Forum (misal index 1)
+    if (_selectedTabIndex == 1) { // Sesuaikan '_selectedTabIndex' dengan nama variabel index tab di kodemu
+      final isCreated = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => const CreateForumModal(),
+      );
+
+      // Refresh halaman jika user selesai membuat postingan
+      if (isCreated == true) {
+        setState(() {});
+      }
+    }
   }
 
   void _showCreateGroupModal() {
@@ -416,6 +434,8 @@ class _CommunityPageState extends State<CommunityPage> {
                         _showSearchUserModal(); // Jika di tab Chats -> Cari User Private
                       } else if (_selectedTabIndex == 0) {
                         _showCreateGroupModal(); // Jika di tab Groups -> Buat Grup Baru
+                      } else if (_selectedTabIndex == 1) {
+                        _openCreateForumModal(); // <-- TAMBAHKAN BARIS INI (Jika di tab Forum)
                       }
                     },
                   ),
@@ -434,7 +454,7 @@ class _CommunityPageState extends State<CommunityPage> {
                   ? _buildChatsList()
                   : _selectedTabIndex == 0
                       ? _buildGroupsList() // Tampilkan daftar grup
-                      : const Center(child: Text('Halaman Forum')),
+                      : const ForumTab()
             ),
           ],
         ),

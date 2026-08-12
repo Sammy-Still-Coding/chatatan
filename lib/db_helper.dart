@@ -1151,4 +1151,35 @@ class DbHelper {
 
     return signedUrl;
   }
+
+  /// 1. Menambahkan anggota baru ke grup yang sudah ada
+  Future<void> addMembersToGroup({
+    required dynamic conversationId,
+    required List<String> userIds,
+  }) async {
+    if (userIds.isEmpty) return;
+
+    final convIdInt = int.tryParse(conversationId.toString()) ?? conversationId;
+
+    final membersData = userIds.map((userId) => {
+      'conversation_id': convIdInt,
+      'user_id': userId,
+    }).toList();
+
+    await _client.from('conversation_members').insert(membersData);
+  }
+
+  /// 2. Mengambil daftar ID anggota yang sudah ada dalam grup
+  Future<List<String>> getGroupMemberIds(dynamic conversationId) async {
+    final convIdInt = int.tryParse(conversationId.toString()) ?? conversationId;
+
+    final response = await _client
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', convIdInt);
+
+    return (response as List)
+        .map((item) => item['user_id'].toString())
+        .toList();
+  }
 }
