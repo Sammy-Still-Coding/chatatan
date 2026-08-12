@@ -99,6 +99,57 @@ class DbHelper {
   }
 
   // ============================================================
+  // FULL PROFILE DATA (UNTUK PROFILE PAGE)
+  // ============================================================
+
+  Future<Map<String, dynamic>?> getFullProfileData() async {
+    final user = currentUser;
+    if (user == null) return null;
+
+    // 1. Ambil Data User/Profile
+    final profile = await getMyProfile();
+
+    // 2. Ambil Data Gamification (Streak, Tokens, XP, Rank)
+    final gamification = await getMyGamification();
+
+    // 3. Hitung Jumlah Total Notes dari Library
+    final notesResponse = await _client
+        .from('library_items')
+        .select('id')
+        .eq('user_id', user.id)
+        .isFilter('deleted_at', null);
+    final totalNotes = (notesResponse as List).length;
+
+    // 4. Hitung Jumlah Discussion/Post di Forum
+    final forumResponse = await _client
+        .from('forum_posts')
+        .select('id')
+        .eq('user_id', user.id);
+    final totalDiscussions = (forumResponse as List).length;
+
+    // 5. Ambil Daftar Achievements User
+    List<Map<String, dynamic>> achievements = [];
+    try {
+      final achResponse = await _client
+          .from('user_achievements')
+          .select('*, achievements(*)')
+          .eq('user_id', user.id);
+      achievements = List<Map<String, dynamic>>.from(achResponse);
+    } catch (_) {
+      // Jika tabel achievements belum ada di Supabase, return list kosong
+      achievements = [];
+    }
+
+    return {
+      'profile': profile,
+      'gamification': gamification,
+      'total_notes': totalNotes,
+      'total_discussions': totalDiscussions,
+      'achievements': achievements,
+    };
+  }
+
+  // ============================================================
   // HOME - GAMIFICATION
   // ============================================================
 
