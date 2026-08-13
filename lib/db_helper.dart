@@ -50,16 +50,29 @@ class DbHelper {
   Future<List<Map<String, dynamic>>> getAiMessages(int conversationId) async {
     final user = currentUser;
     if (user == null) return [];
-    final response = await _client
-        .from('ai_messages')
-        .select('id, sender_type, content, message_type, created_at')
-        .eq('conversation_id', conversationId)
-        // `created_at` can be identical when a user message and the reply are
-        // stored within the same database tick.  `id` makes that tie stable,
-        // so a reopened conversation keeps the original chronological order.
-        .order('created_at', ascending: true)
-        .order('id', ascending: true);
-    return List<Map<String, dynamic>>.from(response);
+    try {
+      final response = await _client
+          .from('ai_messages')
+          .select(
+            'id, sender_type, content, message_type, attachment_name, attachment_locator, created_at',
+          )
+          .eq('conversation_id', conversationId)
+          // `created_at` can be identical when a user message and the reply are
+          // stored within the same database tick. `id` makes that tie stable.
+          .order('created_at', ascending: true)
+          .order('id', ascending: true);
+      return List<Map<String, dynamic>>.from(response);
+    } on PostgrestException {
+      // Allows the basic AI history to keep working until the new attachment
+      // migration has been applied to an older Supabase project.
+      final response = await _client
+          .from('ai_messages')
+          .select('id, sender_type, content, message_type, created_at')
+          .eq('conversation_id', conversationId)
+          .order('created_at', ascending: true)
+          .order('id', ascending: true);
+      return List<Map<String, dynamic>>.from(response);
+    }
   }
 
   Future<void> saveAiMessage({
@@ -67,16 +80,32 @@ class DbHelper {
     required String senderType,
     required String content,
     String messageType = 'TEXT',
+    String? attachmentName,
+    String? attachmentLocator,
   }) async {
     final user = currentUser;
     if (user == null) throw Exception('User belum login.');
-    await _client.from('ai_messages').insert({
+    final payload = <String, dynamic>{
       'conversation_id': conversationId,
       'sender_type': senderType,
       'user_id': senderType == 'AI' ? null : user.id,
       'content': content,
       'message_type': messageType,
-    });
+    };
+    if (attachmentName != null) payload['attachment_name'] = attachmentName;
+    if (attachmentLocator != null) {
+      payload['attachment_locator'] = attachmentLocator;
+    }
+    try {
+      await _client.from('ai_messages').insert(payload);
+    } on PostgrestException {
+      // The attachment columns are additive; do not block an AI response when
+      // a deployment has not run the accompanying migration yet.
+      payload
+        ..remove('attachment_name')
+        ..remove('attachment_locator');
+      await _client.from('ai_messages').insert(payload);
+    }
     await _client
         .from('ai_conversations')
         .update({'updated_at': DateTime.now().toUtc().toIso8601String()})

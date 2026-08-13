@@ -14,3 +14,10 @@ entrypoint = "./functions/curate-forum-attachment/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/ai-chat/index.ts"
+
+[functions.send-push-notification]
+enabled = true
+# Supabase Database Webhooks call this function, authenticated by the
+# x-push-webhook-secret header checked inside the function.
+verify_jwt = false
+entrypoint = "./functions/send-push-notification/index.ts"

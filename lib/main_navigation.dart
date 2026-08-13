@@ -5,6 +5,7 @@ import 'library_page.dart';
 import 'community_page.dart';
 import 'profile_page.dart';
 import 'scan_page.dart';
+import 'push_notification_service.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -27,6 +28,12 @@ class _MainNavigationState extends State<MainNavigation> {
     CommunityPage(key: _communityKey),
     const ProfilePage(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    PushNotificationService.instance.initialize();
+  }
 
   void _openCommunityFromHome(int tab) {
     _communityKey.currentState?.selectTab(tab);

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'login_page.dart';
 import 'main_navigation.dart';
+import 'push_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,6 +12,9 @@ Future<void> main() async {
     url: 'https://getipwvkqbhujoeqgxmz.supabase.co',
     publishableKey: 'sb_publishable_2RhYu4hdkHZOYwdaOYmHdg_W_YGMq87',
   );
+
+  // Fails gracefully until Firebase is configured for this app.
+  await PushNotificationService.instance.initialize();
 
   runApp(const ChatatanApp());
 }

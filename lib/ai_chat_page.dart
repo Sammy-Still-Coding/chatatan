@@ -53,6 +53,8 @@ class _AiChatPageState extends State<AiChatPage> {
                     ? 'assistant'
                     : 'user',
                 'content': message['content']?.toString() ?? '',
+                'file': message['attachment_name']?.toString() ?? '',
+                'url': message['attachment_locator']?.toString() ?? '',
               },
             ),
           );
@@ -143,6 +145,8 @@ class _AiChatPageState extends State<AiChatPage> {
           senderType: 'USER',
           content: sent['content'].toString(),
           messageType: attachment == null ? 'TEXT' : 'FILE',
+          attachmentName: fileName,
+          attachmentLocator: attachment?.locator,
         );
       }
       final response = await _client.functions.invoke(
