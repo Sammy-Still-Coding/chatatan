@@ -15,6 +15,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  final List<int> _tabHistory = [];
   final GlobalKey<LibraryPageState> _libraryKey = GlobalKey<LibraryPageState>();
 
   late final List<Widget> _pages = [
@@ -26,7 +27,14 @@ class _MainNavigationState extends State<MainNavigation> {
   ];
 
   void _onItemTapped(int index) {
+    if (index == _currentIndex) return;
     setState(() {
+      if (index == 0) {
+        // Home is the root page; returning to it clears tab navigation history.
+        _tabHistory.clear();
+      } else {
+        _tabHistory.add(_currentIndex);
+      }
       _currentIndex = index;
     });
     if (index == 1) {
@@ -34,14 +42,27 @@ class _MainNavigationState extends State<MainNavigation> {
     }
   }
 
+  void _goBackToPreviousTab() {
+    if (_currentIndex == 0 && _tabHistory.isEmpty) return;
+    setState(() {
+      _currentIndex = _tabHistory.isNotEmpty ? _tabHistory.removeLast() : 0;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true,
+    return PopScope(
+      canPop: _currentIndex == 0 && _tabHistory.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _goBackToPreviousTab();
+      },
+      child: Scaffold(
+        extendBody: true,
 
-      body: IndexedStack(index: _currentIndex, children: _pages),
+        body: IndexedStack(index: _currentIndex, children: _pages),
 
-      bottomNavigationBar: _buildBottomNavigationBar(),
+        bottomNavigationBar: _buildBottomNavigationBar(),
+      ),
     );
   }
 

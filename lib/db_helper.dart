@@ -1253,6 +1253,24 @@ class DbHelper {
     }
   }
 
+  /// A signed link that forces browser downloads for seven days by default.
+  Future<String> getLibraryDownloadUrl(
+    String storagePath, {
+    int expiresIn = 60 * 60 * 24 * 7,
+  }) async {
+    try {
+      return await _client.storage
+          .from('chatatan-files')
+          .createSignedUrl(
+            storagePath,
+            expiresIn,
+            download: DownloadBehavior.withOriginalName,
+          );
+    } catch (e) {
+      throw Exception('Gagal membuat link unduhan: $e');
+    }
+  }
+
   // ============================================================
   // LIBRARY - MIME TYPE
   // ============================================================
@@ -1626,4 +1644,112 @@ class DbHelper {
         .map((item) => item['user_id'].toString())
         .toList();
   }
+
+  // ------------------------------------------------------------
+  // UPDATE AVATAR / PROFILE PICTURE
+  // ------------------------------------------------------------
+
+  // 1. Ubah return type menjadi Future<String?> (pakai tanda tanya ?)
+  Future<String?> uploadAvatar(XFile image) async {
+    try {
+      final user = currentUser;
+      if (user == null) {
+        throw Exception('User belum login.');
+      }
+
+      final Uint8List bytes = await image.readAsBytes();
+      final originalName = image.name;
+
+      var extension = originalName.contains('.')
+          ? originalName.split('.').last.toLowerCase()
+          : 'jpg';
+      if (extension == 'jpeg') extension = 'jpg';
+
+      // Path penyimpanan file di bucket 'avatars'
+      final storagePath = '${user.id}/avatar_${const Uuid().v4()}.$extension';
+
+      // 1. Upload file gambar ke bucket 'avatars' di Supabase Storage
+      await _client.storage
+          .from('avatars')
+          .uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: FileOptions(
+              contentType: _getMimeType(extension),
+              upsert: true,
+            ),
+          );
+
+      // 2. Dapatkan URL publik dari gambar yang baru diupload
+      final avatarUrl = _client.storage
+          .from('avatars')
+          .getPublicUrl(storagePath);
+
+      // 3. Update kolom 'avatar_url' pada tabel 'users' milik user ini
+      await _client
+          .from('users')
+          .update({'avatar_url': avatarUrl})
+          .eq('id', user.id);
+
+      return avatarUrl;
+    } catch (e) {
+      // 2. Jika terjadi error (koneksi, storage policy, dll), kembalikan null
+      print('Error uploadAvatar: $e');
+      return null;
+    }
+  }
+
+  // ============================================================
+  // BOOKMARK POSTINGAN FORUM
+  // ============================================================
+
+  /// 1. Cek status bookmark postingan forum
+  Future<bool> isForumPostBookmarked(int postId) async {
+    final user = currentUser;
+    if (user == null) return false;
+
+    final response = await _client
+        .from('forum_bookmarks')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('post_id', postId)
+        .maybeSingle();
+
+    return response != null;
+  }
+
+  /// 2. Toggle simpan/batal simpan bookmark postingan forum
+  Future<bool> toggleForumBookmark(int postId, bool currentlyBookmarked) async {
+    final user = currentUser;
+    if (user == null) throw Exception("User belum terautentikasi.");
+
+    if (currentlyBookmarked) {
+      await _client
+          .from('forum_bookmarks')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('post_id', postId);
+      return false;
+    } else {
+      await _client.from('forum_bookmarks').insert({
+        'user_id': user.id,
+        'post_id': postId,
+      });
+      return true;
+    }
+  }
+  /// Mengambil semua postingan forum yang di-bookmark oleh pengguna aktif
+  Future<List<Map<String, dynamic>>> getBookmarkedForumPosts() async {
+    final user = currentUser;
+    if (user == null) return [];
+
+    final response = await _client
+        .from('forum_bookmarks')
+        .select(', forum_posts(, users(*))')
+        .eq('user_id', user.id)
+        .order('created_at', ascending: false);
+
+    return List<Map<String, dynamic>>.from(response);
+  }
+
 }

@@ -3,6 +3,12 @@
         android:label="chatatan"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Required by image_cropper/uCrop. Without this activity Android
+             terminates the app as soon as the user opens the crop screen. -->
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

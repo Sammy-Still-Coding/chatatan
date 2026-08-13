@@ -1,10 +1,10 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:http/http.dart' as http;
-import 'package:public_file_saver/public_file_saver.dart';
+import 'package:file_saver/file_saver.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'db_helper.dart';
@@ -926,6 +926,9 @@ class LibraryPageState extends State<LibraryPage> {
       case 'download':
         await _downloadItem(item);
         break;
+      case 'share_link':
+        await _shareDownloadLink(item);
+        break;
       case 'move':
         await _moveItemToFolder(item);
         break;
@@ -1026,14 +1029,13 @@ class LibraryPageState extends State<LibraryPage> {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('Server mengembalikan status ${response.statusCode}.');
       }
-      final saved = await PublicFileSaver().saveBytes(
+      await FileSaver.instance.saveFile(
         bytes: response.bodyBytes,
-        fileName: fileName,
-        mimeType: mimeType,
+        name: fileName,
+        includeExtension: false,
+        mimeType: MimeType.custom,
+        customMimeType: mimeType,
       );
-      if (saved == null || !saved.isSuccess) {
-        throw Exception('Unduhan dibatalkan atau gagal disimpan.');
-      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$fileName berhasil diunduh ke perangkat.')),
@@ -1043,6 +1045,58 @@ class LibraryPageState extends State<LibraryPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Gagal mengunduh file: $e')));
+    }
+  }
+
+  Future<void> _shareDownloadLink(Map<String, dynamic> item) async {
+    try {
+      final storagePath = _fileForItem(item)?['storage_path']?.toString();
+      if (storagePath == null || storagePath.isEmpty) {
+        throw Exception('File belum tersedia.');
+      }
+      final url = await _dbHelper.getLibraryDownloadUrl(storagePath);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Bagikan link unduhan'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Siapa pun yang membuka link ini akan langsung mengunduh file. Link aktif selama 7 hari.',
+              ),
+              const SizedBox(height: 12),
+              SelectableText(url, maxLines: 4),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Tutup'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: url));
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Link unduhan disalin.')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('Salin link'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal membuat link: $e')));
     }
   }
 
@@ -1152,6 +1206,9 @@ class LibraryPageState extends State<LibraryPage> {
               case 'download':
                 _downloadItem(item);
                 break;
+              case 'share_link':
+                _shareDownloadLink(item);
+                break;
               case 'move':
                 _moveItemToFolder(item);
                 break;
@@ -1179,6 +1236,13 @@ class LibraryPageState extends State<LibraryPage> {
               child: ListTile(
                 leading: Icon(Icons.download_outlined),
                 title: Text('Unduh ke perangkat'),
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'share_link',
+              child: ListTile(
+                leading: Icon(Icons.link_outlined),
+                title: Text('Bagikan link unduhan'),
               ),
             ),
             const PopupMenuItem(
@@ -2087,6 +2151,12 @@ class _LibraryFolderPageState extends State<LibraryFolderPage> {
                                                   value: 'download',
                                                   child: Text(
                                                     'Unduh ke perangkat',
+                                                  ),
+                                                ),
+                                                const PopupMenuItem(
+                                                  value: 'share_link',
+                                                  child: Text(
+                                                    'Bagikan link unduhan',
                                                   ),
                                                 ),
                                                 PopupMenuItem(
