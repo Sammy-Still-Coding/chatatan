@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'db_helper.dart';
 import 'community_chat_page.dart';
 import 'forum_detail_page.dart';
+import 'app_states.dart';
+import 'notification_settings_page.dart';
 
 /// In-app notification centre. OS push notifications are intentionally kept
 /// separate: this page always works while the app is open and keeps a history
@@ -18,6 +20,7 @@ class _NotificationPageState extends State<NotificationPage> {
   final DbHelper _db = DbHelper();
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -29,12 +32,14 @@ class _NotificationPageState extends State<NotificationPage> {
     setState(() => _loading = true);
     try {
       final items = await _db.getNotifications();
-      if (mounted) setState(() => _items = items);
+      if (mounted)
+        setState(() {
+          _items = items;
+          _error = null;
+        });
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal memuat notifikasi: $error')),
-        );
+        setState(() => _error = error.toString());
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -136,6 +141,15 @@ class _NotificationPageState extends State<NotificationPage> {
       appBar: AppBar(
         title: const Text('Notifikasi'),
         actions: [
+          IconButton(
+            tooltip: 'Pengaturan notifikasi',
+            icon: const Icon(Icons.tune_rounded),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const NotificationSettingsPage(),
+              ),
+            ),
+          ),
           TextButton(
             onPressed: _items.any((item) => item['is_read'] != true)
                 ? _markAllRead
@@ -145,24 +159,20 @@ class _NotificationPageState extends State<NotificationPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingState(label: 'Memuat notifikasi...')
+          : _error != null
+          ? AppErrorState(onRetry: _load, message: _error)
           : RefreshIndicator(
               onRefresh: _load,
               child: _items.isEmpty
                   ? ListView(
                       children: const [
-                        SizedBox(height: 150),
-                        Icon(
-                          Icons.notifications_none_rounded,
-                          size: 54,
-                          color: Colors.grey,
-                        ),
-                        SizedBox(height: 12),
-                        Center(
-                          child: Text(
-                            'Belum ada notifikasi',
-                            style: TextStyle(color: Colors.grey),
-                          ),
+                        SizedBox(height: 130),
+                        AppEmptyState(
+                          icon: Icons.notifications_none_rounded,
+                          title: 'Belum ada notifikasi',
+                          message:
+                              'Pesan, grup, dan balasan forum akan muncul di sini.',
                         ),
                       ],
                     )

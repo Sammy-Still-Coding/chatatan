@@ -6,11 +6,10 @@
    - `PUSH_WEBHOOK_SECRET`: a long random value.
    - `FIREBASE_SERVICE_ACCOUNT_JSON`: the complete one-line JSON of a Firebase
      service account with Firebase Cloud Messaging permission.
-4. In Supabase Dashboard > Database > Webhooks, create a webhook for
-   `public.notifications` on `INSERT`:
-   - URL: `https://<project-ref>.supabase.co/functions/v1/send-push-notification`
-   - Header: `x-push-webhook-secret: <same random value>`
-   - Body: use the default database-webhook payload (it contains `record`).
+4. Run `20260814_push_notification_trigger.sql`. Before it runs, store the
+   same secret in Supabase Vault under `chatatan_push_webhook_secret`. The
+   migration installs a database trigger for every `INSERT` in
+   `public.notifications`; no Dashboard Database Webhook is required.
 5. Configure Firebase for the Flutter app using `flutterfire configure` and
    ensure Android's application id is registered in the Firebase project.
 

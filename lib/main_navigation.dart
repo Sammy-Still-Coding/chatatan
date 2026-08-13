@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'home_page.dart';
@@ -6,6 +8,9 @@ import 'community_page.dart';
 import 'profile_page.dart';
 import 'scan_page.dart';
 import 'push_notification_service.dart';
+import 'community_chat_page.dart';
+import 'forum_detail_page.dart';
+import 'db_helper.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -20,6 +25,8 @@ class _MainNavigationState extends State<MainNavigation> {
   final GlobalKey<LibraryPageState> _libraryKey = GlobalKey<LibraryPageState>();
   final GlobalKey<CommunityPageState> _communityKey =
       GlobalKey<CommunityPageState>();
+  final _db = DbHelper();
+  StreamSubscription<Map<String, String>>? _pushOpenSubscription;
 
   late final List<Widget> _pages = [
     HomePage(onOpenCommunity: _openCommunityFromHome),
@@ -33,6 +40,46 @@ class _MainNavigationState extends State<MainNavigation> {
   void initState() {
     super.initState();
     PushNotificationService.instance.initialize();
+    _pushOpenSubscription = PushNotificationService
+        .instance
+        .onNotificationOpened
+        .listen(_openPushTarget);
+  }
+
+  @override
+  void dispose() {
+    _pushOpenSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _openPushTarget(Map<String, String> data) async {
+    final navigator = Navigator.of(context);
+    final entityType = data['entity_type'];
+    final entityId = int.tryParse(data['entity_id'] ?? '');
+    if (entityId == null) return;
+    if (entityType == 'FORUM_POST') {
+      await navigator.push(
+        MaterialPageRoute(builder: (_) => ForumDetailPage(postId: entityId)),
+      );
+      return;
+    }
+    if (entityType == 'CONVERSATION') {
+      final room = await _db.getConversation(entityId);
+      if (!mounted || room == null) return;
+      final isGroup = room['conversation_type']?.toString() == 'GROUP';
+      final title = room['title']?.toString().trim();
+      await navigator.push(
+        MaterialPageRoute(
+          builder: (_) => CommunityChatPage(
+            conversationId: entityId,
+            title: title == null || title.isEmpty
+                ? (isGroup ? 'Grup chat' : 'Chat')
+                : title,
+            isGroup: isGroup,
+          ),
+        ),
+      );
+    }
   }
 
   void _openCommunityFromHome(int tab) {

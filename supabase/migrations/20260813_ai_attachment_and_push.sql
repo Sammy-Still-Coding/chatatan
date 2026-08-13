@@ -7,9 +7,9 @@ create index if not exists idx_ai_messages_attachment
   on public.ai_messages (conversation_id)
   where attachment_locator is not null;
 
-create unique index if not exists uq_user_devices_user_push_token
-  on public.user_devices (user_id, push_token)
-  where push_token is not null;
+drop index if exists public.uq_user_devices_user_push_token;
+create unique index uq_user_devices_user_push_token
+  on public.user_devices (user_id, push_token);
 
 alter table public.user_devices enable row level security;
 

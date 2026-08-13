@@ -3,6 +3,7 @@ import { GoogleAuth } from 'npm:google-auth-library@10'
 
 type NotificationRecord = {
   user_id?: string
+  type?: string
   title?: string
   body?: string
   entity_type?: string
@@ -26,10 +27,13 @@ Deno.serve(async (req) => {
     )
     const { data: setting } = await admin
       .from('user_settings')
-      .select('notification_enabled')
+      .select('notification_enabled, notify_private_messages, notify_group_messages, notify_forum_replies')
       .eq('user_id', record.user_id)
       .maybeSingle()
     if (setting?.notification_enabled === false) return Response.json({ sent: 0, disabled: true })
+    if (record.type === 'PRIVATE_MESSAGE' && setting?.notify_private_messages === false) return Response.json({ sent: 0, disabled: true })
+    if (record.type === 'GROUP_MESSAGE' && setting?.notify_group_messages === false) return Response.json({ sent: 0, disabled: true })
+    if (record.type === 'FORUM_REPLY' && setting?.notify_forum_replies === false) return Response.json({ sent: 0, disabled: true })
 
     const { data: devices, error } = await admin
       .from('user_devices')
@@ -48,6 +52,7 @@ Deno.serve(async (req) => {
     const accessToken = await auth.getAccessToken()
     if (!accessToken) throw new Error('Tidak dapat membuat akses FCM.')
     const data = {
+      notification_type: String(record.type ?? ''),
       entity_type: String(record.entity_type ?? ''),
       entity_id: String(record.entity_id ?? ''),
       ...Object.fromEntries(Object.entries(record.data_json ?? {}).map(([key, value]) => [key, String(value)])),

@@ -724,7 +724,7 @@ CREATE TABLE public.conversation_member_settings (
   CONSTRAINT conversation_member_settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.gamification_reward_ledger (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,q
   user_id uuid NOT NULL,
   reward_key text NOT NULL,
   reward_type text NOT NULL,

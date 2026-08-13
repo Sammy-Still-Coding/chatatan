@@ -1708,6 +1708,37 @@ class DbHelper {
         .eq('is_read', false);
   }
 
+  Future<Map<String, dynamic>> getNotificationPreferences() async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    final row = await _client
+        .from('user_settings')
+        .select(
+          'notification_enabled, notify_private_messages, notify_group_messages, notify_forum_replies',
+        )
+        .eq('user_id', user.id)
+        .maybeSingle();
+    return row == null ? <String, dynamic>{} : Map<String, dynamic>.from(row);
+  }
+
+  Future<void> updateNotificationPreferences({
+    required bool enabled,
+    required bool privateMessages,
+    required bool groupMessages,
+    required bool forumReplies,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    await _client.from('user_settings').upsert({
+      'user_id': user.id,
+      'notification_enabled': enabled,
+      'notify_private_messages': privateMessages,
+      'notify_group_messages': groupMessages,
+      'notify_forum_replies': forumReplies,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
   Future<void> setConversationPinned(int conversationId, bool pinned) async {
     final user = currentUser;
     if (user == null) return;
