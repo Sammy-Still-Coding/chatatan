@@ -13,6 +13,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   final _usernameController = TextEditingController();
 
   final _dbHelper = DbHelper();
@@ -20,33 +21,39 @@ class _LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
   bool _isRegister = false;
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   Future<void> _submit() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
     final username = _usernameController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      _showMessage(
-        'Email dan password wajib diisi.',
-        isError: true,
-      );
+      _showMessage('Email dan password wajib diisi.', isError: true);
       return;
     }
 
     if (_isRegister && username.isEmpty) {
+      _showMessage('Username wajib diisi.', isError: true);
+      return;
+    }
+
+    if (_isRegister && !RegExp(r'^[a-zA-Z0-9_]{3,24}$').hasMatch(username)) {
       _showMessage(
-        'Username wajib diisi.',
+        'Username harus 3–24 karakter dan hanya boleh huruf, angka, atau underscore.',
         isError: true,
       );
       return;
     }
 
     if (password.length < 6) {
-      _showMessage(
-        'Password minimal 6 karakter.',
-        isError: true,
-      );
+      _showMessage('Password minimal 6 karakter.', isError: true);
+      return;
+    }
+
+    if (_isRegister && password != confirmPassword) {
+      _showMessage('Konfirmasi password belum sama.', isError: true);
       return;
     }
 
@@ -69,27 +76,21 @@ class _LoginPageState extends State<LoginPage> {
         if (!mounted) return;
 
         if (response.user != null) {
-          _showMessage(
-            'Akun berhasil dibuat!',
-          );
+          _showMessage('Akun berhasil dibuat!');
 
           // Kalau email confirmation aktif,
           // user belum tentu langsung login.
           if (response.session != null) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(
-                builder: (_) => const MainNavigation(),
-              ),
+              MaterialPageRoute(builder: (_) => const MainNavigation()),
             );
           } else {
             setState(() {
               _isRegister = false;
             });
 
-            _showMessage(
-              'Akun dibuat. Silakan cek email untuk verifikasi.',
-            );
+            _showMessage('Akun dibuat. Silakan cek email untuk verifikasi.');
           }
         }
       } else {
@@ -105,32 +106,22 @@ class _LoginPageState extends State<LoginPage> {
         if (!mounted) return;
 
         if (response.user != null) {
-          _showMessage(
-            'Login berhasil!',
-          );
+          _showMessage('Login berhasil!');
 
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (_) => const MainNavigation(),
-            ),
+            MaterialPageRoute(builder: (_) => const MainNavigation()),
           );
         }
       }
     } on AuthException catch (e) {
       if (!mounted) return;
 
-      _showMessage(
-        e.message,
-        isError: true,
-      );
+      _showMessage(e.message, isError: true);
     } catch (e) {
       if (!mounted) return;
 
-      _showMessage(
-        'Terjadi kesalahan: $e',
-        isError: true,
-      );
+      _showMessage('Terjadi kesalahan: $e', isError: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -140,10 +131,7 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -162,6 +150,7 @@ class _LoginPageState extends State<LoginPage> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     _usernameController.dispose();
 
     super.dispose();
@@ -176,13 +165,10 @@ class _LoginPageState extends State<LoginPage> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 430,
-              ),
+              constraints: const BoxConstraints(maxWidth: 430),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-
                   // LOGO
                   Container(
                     width: 80,
@@ -201,9 +187,7 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 28),
 
                   Text(
-                    _isRegister
-                        ? 'Buat akun baru'
-                        : 'Selamat datang kembali!',
+                    _isRegister ? 'Buat akun baru' : 'Selamat datang kembali!',
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -216,10 +200,7 @@ class _LoginPageState extends State<LoginPage> {
                     _isRegister
                         ? 'Daftar untuk mulai menggunakan ChaTatan.'
                         : 'Masuk untuk melanjutkan ke ChaTatan.',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 15,
-                    ),
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
                   ),
 
                   const SizedBox(height: 32),
@@ -232,9 +213,7 @@ class _LoginPageState extends State<LoginPage> {
                       decoration: InputDecoration(
                         labelText: 'Username',
                         hintText: 'Contoh: samuel',
-                        prefixIcon: const Icon(
-                          Icons.person_outline,
-                        ),
+                        prefixIcon: const Icon(Icons.person_outline),
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
@@ -255,9 +234,7 @@ class _LoginPageState extends State<LoginPage> {
                     decoration: InputDecoration(
                       labelText: 'Email',
                       hintText: 'nama@email.com',
-                      prefixIcon: const Icon(
-                        Icons.email_outlined,
-                      ),
+                      prefixIcon: const Icon(Icons.email_outlined),
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
@@ -278,9 +255,7 @@ class _LoginPageState extends State<LoginPage> {
                     decoration: InputDecoration(
                       labelText: 'Password',
                       hintText: 'Minimal 6 karakter',
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                      ),
+                      prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() {
@@ -301,6 +276,38 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
+
+                  if (_isRegister) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _confirmPasswordController,
+                      obscureText: _obscureConfirmPassword,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(),
+                      decoration: InputDecoration(
+                        labelText: 'Ulangi password',
+                        hintText: 'Masukkan password yang sama',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          onPressed: () => setState(
+                            () => _obscureConfirmPassword =
+                                !_obscureConfirmPassword,
+                          ),
+                          icon: Icon(
+                            _obscureConfirmPassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ],
 
                   const SizedBox(height: 24),
 
@@ -327,9 +334,7 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             )
                           : Text(
-                              _isRegister
-                                  ? 'BUAT AKUN'
-                                  : 'MASUK',
+                              _isRegister ? 'BUAT AKUN' : 'MASUK',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 0.5,
@@ -345,25 +350,15 @@ class _LoginPageState extends State<LoginPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        _isRegister
-                            ? 'Sudah punya akun?'
-                            : 'Belum punya akun?',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                        ),
+                        _isRegister ? 'Sudah punya akun?' : 'Belum punya akun?',
+                        style: TextStyle(color: Colors.grey.shade600),
                       ),
 
                       TextButton(
-                        onPressed: _isLoading
-                            ? null
-                            : _toggleMode,
+                        onPressed: _isLoading ? null : _toggleMode,
                         child: Text(
-                          _isRegister
-                              ? 'Masuk'
-                              : 'Daftar',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          _isRegister ? 'Masuk' : 'Daftar',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
                     ],

@@ -97,10 +97,12 @@ class DbHelper {
     required String password,
     required String username,
   }) async {
+    final normalizedUsername = username.trim();
     final response = await _client.auth.signUp(
       email: email,
       password: password,
-      data: {'username': username},
+      // The database trigger persists this exact value to public.users.
+      data: {'username': normalizedUsername},
     );
 
     return response;

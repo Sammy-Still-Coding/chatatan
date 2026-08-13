@@ -723,3 +723,14 @@ CREATE TABLE public.conversation_member_settings (
   CONSTRAINT conversation_member_settings_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id),
   CONSTRAINT conversation_member_settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+CREATE TABLE public.gamification_reward_ledger (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  reward_key text NOT NULL,
+  reward_type text NOT NULL,
+  amount integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT gamification_reward_ledger_pkey PRIMARY KEY (id),
+  CONSTRAINT gamification_reward_ledger_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
