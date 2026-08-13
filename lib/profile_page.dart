@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // 1. Ditambahkan agar Supabase.instance tidak error
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'db_helper.dart';
 import 'privacy_security_page.dart';
 import 'login_page.dart';
+import 'save_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -14,6 +16,93 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final DbHelper _dbHelper = DbHelper();
   bool _isDarkMode = false;
+  bool _isUploadingAvatar = false;
+
+  // Menampilkan Modal Pilihan: Galeri atau Kamera
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined, color: Color(0xFF5B6CFF)),
+                  title: const Text('Pilih dari Galeri'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndUploadAvatar(ImageSource.gallery);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.camera_alt_outlined, color: Color(0xFF5B6CFF)),
+                  title: const Text('Ambil Foto Kamera'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndUploadAvatar(ImageSource.camera);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Mengambil gambar dan mengunggahnya
+  Future<void> _pickAndUploadAvatar(ImageSource source) async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: source,
+      imageQuality: 80,
+      maxWidth: 800,
+    );
+
+    if (image == null) return;
+
+    setState(() {
+      _isUploadingAvatar = true;
+    });
+
+    final newAvatarUrl = await _dbHelper.uploadAvatar(image);
+
+    setState(() {
+      _isUploadingAvatar = false;
+    });
+
+    if (mounted) {
+      if (newAvatarUrl != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Foto profil berhasil diperbarui!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal mengunggah foto profil. Periksa koneksi/storage policy.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  String _getInitials(String name) {
+    if (name.trim().isEmpty) return 'U';
+    List<String> parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length > 1) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return parts[0][0].toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,17 +112,14 @@ class _ProfilePageState extends State<ProfilePage> {
         child: FutureBuilder<Map<String, dynamic>?>(
           future: _dbHelper.getFullProfileData(),
           builder: (context, snapshot) {
-            // Loading State
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if (snapshot.connectionState == ConnectionState.waiting && !_isUploadingAvatar) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            // Error / Empty State
             if (!snapshot.hasData || snapshot.data == null) {
               return const Center(child: Text('Gagal memuat data profil.'));
             }
 
-            // Extract Data dari Supabase
             final data = snapshot.data!;
             final profile = data['profile'] ?? {};
             final gamification = data['gamification'] ?? {};
@@ -41,8 +127,8 @@ class _ProfilePageState extends State<ProfilePage> {
             final name = profile['username'] ?? profile['full_name'] ?? 'Pengguna';
             final university = profile['university'] ?? 'Universitas Bina Nusantara';
             final major = profile['major'] ?? 'Informatika';
-            
-            // 2. Penyesuaian nama kolom database SQL (current_streak, token_balance, total_points)
+            final avatarUrl = profile['avatar_url'] as String?;
+
             final streak = gamification['current_streak'] ?? gamification['streak_count'] ?? gamification['streak'] ?? 0;
             final tokens = gamification['token_balance'] ?? gamification['tokens'] ?? 0;
             final rank = gamification['rank'] != null ? '#${gamification['rank']}' : '-';
@@ -55,15 +141,12 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. Header Card (Nama, Campus, Mini Stats)
-                  _buildHeaderCard(name, university, major, streak, tokens, rank),
+                  _buildHeaderCard(name, university, major, avatarUrl, streak, tokens, rank),
                   const SizedBox(height: 20),
 
-                  // 2. Stat Summary Cards (Notes, Discussions, XP)
                   _buildStatSummary(totalNotes, discussions, xpPoints),
                   const SizedBox(height: 24),
 
-                  // 3. Achievements Section
                   const Text(
                     '🏅 Achievements',
                     style: TextStyle(
@@ -76,7 +159,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   _buildAchievementsGrid(data['achievements'] as List),
                   const SizedBox(height: 24),
 
-                  // 4. Settings Section
                   const Text(
                     '⚙️ Settings',
                     style: TextStyle(
@@ -89,7 +171,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   _buildSettingsList(),
                   const SizedBox(height: 20),
 
-                  // 5. Logout Button
                   _buildLogoutButton(),
                   const SizedBox(height: 24),
                 ],
@@ -101,21 +182,11 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // --- HELPER METHODS & UI COMPONENTS ---
-
-  String _getInitials(String name) {
-    if (name.trim().isEmpty) return 'U';
-    List<String> parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length > 1) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
-    return parts[0][0].toUpperCase();
-  }
-
   Widget _buildHeaderCard(
     String name,
     String university,
     String major,
+    String? avatarUrl,
     int streak,
     int tokens,
     String rank,
@@ -139,52 +210,72 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       child: Column(
         children: [
-          Stack(
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.25),
-                  border: Border.all(color: Colors.white.withOpacity(0.5), width: 3),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 12,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Text(
-                    _getInitials(name),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
+          GestureDetector(
+            onTap: _isUploadingAvatar ? null : _showImagePickerOptions,
+            child: Stack(
+              children: [
+                Container(
+                  width: 84,
+                  height: 84,
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.25),
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 12,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                    image: (avatarUrl != null && avatarUrl.isNotEmpty)
+                        ? DecorationImage(
+                            image: NetworkImage(avatarUrl),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
                   ),
-                  child: const Icon(
-                    Icons.add,
-                    size: 16,
-                    color: Color(0xFF5B6CFF),
+                  child: _isUploadingAvatar
+                      ? const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        )
+                      : (avatarUrl == null || avatarUrl.isEmpty)
+                          ? Center(
+                              child: Text(
+                                _getInitials(name),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            )
+                          : null,
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.camera_alt_rounded,
+                      size: 14,
+                      color: Color(0xFF5B6CFF),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Text(
@@ -478,6 +569,20 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           _divider(),
           _buildSettingItem(
+            icon: Icons.bookmark_outline_rounded,
+            title: 'Tersimpan',
+            trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280), size: 20),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SavedPage(),
+                ),
+              );
+            },
+          ),
+          _divider(),
+          _buildSettingItem(
             icon: Icons.lock_outline_rounded,
             title: 'Privacy & Keamanan',
             trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280), size: 20),
@@ -501,7 +606,6 @@ class _ProfilePageState extends State<ProfilePage> {
             trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280), size: 20),
             onTap: () {},
           ),
-          _divider(),
         ],
       ),
     );
@@ -562,7 +666,6 @@ class _ProfilePageState extends State<ProfilePage> {
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton(
-        // 3. DIUBAH: Menghubungkan tombol ke fungsi _handleLogout
         onPressed: _handleLogout,
         style: OutlinedButton.styleFrom(
           backgroundColor: const Color(0xFFFF5B5B).withOpacity(0.08),

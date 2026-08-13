@@ -48,7 +48,10 @@ class _ForumTabState extends State<ForumTab> {
       final votes = <int, String?>{};
       for (final post in posts) {
         final id = int.tryParse(post['id'].toString());
-        if (id != null) votes[id] = await _dbHelper.getForumPostVote(id);
+        if (id != null) {
+          votes[id] = await _dbHelper.getForumPostVote(id);
+          post['is_bookmarked'] = await _dbHelper.isForumPostBookmarked(id);
+        }
       }
       if (!mounted) return;
       setState(() {
@@ -97,22 +100,39 @@ class _ForumTabState extends State<ForumTab> {
     }
   }
 
-  void _toggleBookmarkUI(int index) {
-    setState(() {
-      _posts[index]['is_bookmarked'] =
-          !(_posts[index]['is_bookmarked'] ?? false);
-    });
+  // --- TOGGLE BOOKMARK FORUM ---
+  Future<void> _toggleBookmarkUI(int index) async {
+    final post = _posts[index];
+    final postId = post['id'] as int?;
+    if (postId == null) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _posts[index]['is_bookmarked'] == true
-              ? 'Postingan disimpan'
-              : 'Batal menyimpan',
+    final currentBookmarkStatus = post['is_bookmarked'] ?? false;
+
+    try {
+      final newStatus = await _dbHelper.toggleForumBookmark(
+        postId,
+        currentBookmarkStatus,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _posts[index]['is_bookmarked'] = newStatus;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            newStatus ? 'Postingan disimpan' : 'Batal menyimpan postingan',
+          ),
+          duration: const Duration(seconds: 1),
         ),
-        duration: const Duration(seconds: 1),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengubah bookmark: $e')),
+      );
+    }
   }
 
   Future<void> _openCreateModal() async {
@@ -250,7 +270,6 @@ class _ForumTabState extends State<ForumTab> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Header: Avatar, Nama, Waktu, dan Hashtag
                               Row(
                                 children: [
                                   CircleAvatar(
@@ -316,7 +335,6 @@ class _ForumTabState extends State<ForumTab> {
                               ),
                               const SizedBox(height: 12),
 
-                              // Isi Postingan
                               Text(
                                 post['content'] ?? '',
                                 style: const TextStyle(
@@ -327,7 +345,6 @@ class _ForumTabState extends State<ForumTab> {
                               ),
                               const SizedBox(height: 14),
 
-                              // Footer Action: Like, Balasan, dan Bookmark
                               Row(
                                 children: [
                                   Column(
@@ -370,7 +387,6 @@ class _ForumTabState extends State<ForumTab> {
                                   ),
                                   const SizedBox(width: 16),
 
-                                  // Tombol Balasan
                                   InkWell(
                                     onTap: () => _openDetailPage(postId),
                                     borderRadius: BorderRadius.circular(8),

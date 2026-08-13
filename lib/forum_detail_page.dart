@@ -25,11 +25,10 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
 
   // --- STATE TOGGLE LIKE (Mencegah Spam Like) ---
   String? _postVote;
-  final Set<int> _likedReplyIds =
-      {}; // Menyimpan ID reply yang sudah di-like user
+  final Set<int> _likedReplyIds = {};
 
   // --- STATE MEMBALAS BALASAN (Reply-to-Reply) ---
-  Map<String, dynamic>? _replyingTo; // Data reply yang sedang dibalas
+  Map<String, dynamic>? _replyingTo;
 
   // UI State untuk Bookmark
   bool _isBookmarked = false;
@@ -61,7 +60,7 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
           .eq('id', widget.postId)
           .single();
 
-      // 2. Fetch Replies (Mengambil data pembalas + data orang yang dibalas via parent_reply_id)
+      // 2. Fetch Replies
       final repliesRes = await _supabase
           .from('forum_replies')
           .select('''
@@ -80,12 +79,17 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
 
       final attachments = await _dbHelper.getForumAttachments(widget.postId);
       final postVote = await _dbHelper.getForumPostVote(widget.postId);
+      
+      // Ambil status bookmark awal
+      final isBookmarked = await _dbHelper.isForumPostBookmarked(widget.postId);
+
       if (!mounted) return;
       setState(() {
         _post = postRes;
         _replies = List<Map<String, dynamic>>.from(repliesRes);
         _attachments = attachments;
         _postVote = postVote;
+        _isBookmarked = isBookmarked;
       });
     } catch (e) {
       debugPrint('Error load detail: $e');
@@ -122,6 +126,35 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
           context,
         ).showSnackBar(SnackBar(content: Text('Gagal memperbarui vote: $e')));
       }
+    }
+  }
+
+  // --- TOGGLE BOOKMARK FORUM ---
+  Future<void> _toggleBookmarkUI() async {
+    try {
+      final newStatus = await _dbHelper.toggleForumBookmark(
+        widget.postId,
+        _isBookmarked,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _isBookmarked = newStatus;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isBookmarked ? 'Postingan disimpan' : 'Batal menyimpan postingan',
+          ),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengubah bookmark: $e')),
+      );
     }
   }
 
@@ -258,106 +291,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     }
   }
 
-  /*
-  Future<void> _showCuration(Map<String, dynamic> attachment) async {
-    String status = attachment['curation_status']?.toString() == 'FAILED'
-        ? 'FAILED'
-        : 'PASSED';
-    final scoreController = TextEditingController(
-      text: attachment['relevance_score']?.toString() ?? '',
-    );
-    final labelController = TextEditingController(
-      text: attachment['relevance_label']?.toString() ?? '',
-    );
-    final feedbackController = TextEditingController(
-      text: attachment['curation_feedback']?.toString() ?? '',
-    );
-    final save = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Kurasi file'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  initialValue: status,
-                  decoration: const InputDecoration(labelText: 'Keputusan'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'PASSED',
-                      child: Text('Layak dibagikan'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'FAILED',
-                      child: Text('Tidak layak'),
-                    ),
-                  ],
-                  onChanged: (value) => setDialogState(() => status = value!),
-                ),
-                TextField(
-                  controller: scoreController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Relevansi belajar (0–100)',
-                  ),
-                ),
-                TextField(
-                  controller: labelController,
-                  decoration: const InputDecoration(
-                    labelText: 'Label relevansi',
-                  ),
-                ),
-                TextField(
-                  controller: feedbackController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Catatan kurasi',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Batal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Simpan'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (save == true) {
-      try {
-        await _dbHelper.curateForumAttachment(
-          int.parse(attachment['id'].toString()),
-          status: status,
-          relevanceScore: double.tryParse(scoreController.text),
-          relevanceLabel: labelController.text,
-          feedback: feedbackController.text,
-        );
-        await _loadPostData();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Gagal menyimpan kurasi: $e')));
-        }
-      }
-    }
-    scoreController.dispose();
-    labelController.dispose();
-    feedbackController.dispose();
-  }
-  */
-
   Widget _buildAttachments() {
     if (_attachments.isEmpty) return const SizedBox.shrink();
     return Column(
@@ -465,7 +398,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     );
   }
 
-  // --- TOGGLE LIKE BALASAN / REPLY (+1 / -1) ---
   Future<void> _toggleReplyLike(int index) async {
     final reply = _replies[index];
     final replyId = reply['id'];
@@ -494,7 +426,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     }
   }
 
-  // --- SET MEMBALAS KALIMAT/BALASAN TERTENTU ---
   void _setReplyingTo(Map<String, dynamic> reply) {
     final user = reply['users'] ?? {};
     final username = user['username'] ?? user['full_name'] ?? 'User';
@@ -503,7 +434,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
       _replyingTo = {'id': reply['id'], 'username': username};
     });
 
-    // Otomatis fokus ke kolom input
     _focusNode.requestFocus();
   }
 
@@ -513,7 +443,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     });
   }
 
-  // --- KIRIM BALASAN ---
   Future<void> _sendReply() async {
     final text = _replyController.text.trim();
     final userId = _supabase.auth.currentUser?.id;
@@ -530,7 +459,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
         'like_count': 0,
       };
 
-      // Jika membalas balasan orang lain, masukkan parent_reply_id
       if (_replyingTo != null) {
         insertData['parent_reply_id'] = _replyingTo!['id'];
       }
@@ -549,7 +477,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
             .toList(),
       );
 
-      // Increment reply_count di forum_posts
       final currentReplyCount = (_post?['reply_count'] as int?) ?? 0;
       await _supabase
           .from('forum_posts')
@@ -566,20 +493,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
         context,
       ).showSnackBar(SnackBar(content: Text('Gagal mengirim balasan: $e')));
     }
-  }
-
-  void _toggleBookmarkUI() {
-    setState(() {
-      _isBookmarked = !_isBookmarked;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _isBookmarked ? 'Postingan disimpan' : 'Batal menyimpan postingan',
-        ),
-        duration: const Duration(seconds: 1),
-      ),
-    );
   }
 
   @override
@@ -626,7 +539,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- CARD POST UTAMA ---
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -801,7 +713,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                   ),
                   const SizedBox(height: 12),
 
-                  // --- LIST BALASAN ---
                   ListView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -817,7 +728,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                       final replyLikes = reply['like_count'] ?? 0;
                       final isReplyLiked = _likedReplyIds.contains(replyId);
 
-                      // Cek apakah balasan ini ditujukan ke orang lain (Parent Reply)
                       final parentData = reply['parent'];
                       final parentUser = parentData != null
                           ? parentData['users']
@@ -877,7 +787,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                     ],
                                   ),
 
-                                  // Label "Membalas @username" jika ini balasan bertingkat
                                   if (parentName != null) ...[
                                     const SizedBox(height: 2),
                                     Text(
@@ -991,10 +900,8 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                     }),
                                   const SizedBox(height: 10),
 
-                                  // Action Bar Balasan: Like & Tombol Balas
                                   Row(
                                     children: [
-                                      // Like Toggle Balasan
                                       InkWell(
                                         onTap: () => _toggleReplyLike(index),
                                         borderRadius: BorderRadius.circular(6),
@@ -1034,7 +941,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                       ),
                                       const SizedBox(width: 16),
 
-                                      // Tombol BALAS (Twitter-style reply)
                                       InkWell(
                                         onTap: () => _setReplyingTo(reply),
                                         borderRadius: BorderRadius.circular(6),
@@ -1068,7 +974,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
             ),
           ),
 
-          // --- BAR INPUT BALASAN ---
           Container(
             decoration: const BoxDecoration(
               color: Colors.white,
@@ -1086,7 +991,6 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Banner Indikator "Membalas @user"
                   if (_replyingTo != null)
                     Container(
                       margin: const EdgeInsets.only(bottom: 8),
