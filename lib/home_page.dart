@@ -4,9 +4,14 @@ import 'db_helper.dart';
 import 'login_page.dart';
 import 'notification_page.dart';
 import 'pet_selection_page.dart';
+import 'pet_roadmap_page.dart';
+import 'community_chat_page.dart';
+import 'forum_detail_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.onOpenCommunity});
+
+  final ValueChanged<int>? onOpenCommunity;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -300,7 +305,9 @@ class _HomePageState extends State<HomePage> {
 
     return InkWell(
       borderRadius: BorderRadius.circular(28),
-      onTap: _claimStreak,
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const PetRoadmapPage())),
       child: Container(
         padding: const EdgeInsets.all(22),
 
@@ -518,7 +525,7 @@ class _HomePageState extends State<HomePage> {
   Widget _buildStatsCard() {
     final points = _getInt('total_points');
     final tokens = _getInt('token_balance');
-    final level = _getInt('current_level');
+    final level = _levelForExp(points);
 
     return Row(
       children: [
@@ -548,9 +555,67 @@ class _HomePageState extends State<HomePage> {
             icon: Icons.workspace_premium_rounded,
             title: 'Level',
             value: level.toString(),
+            onTap: _showLevelInfo,
           ),
         ),
       ],
+    );
+  }
+
+  int _levelForExp(int totalExp) {
+    var level = 1;
+    var remaining = totalExp;
+    while (remaining >= level * 100) {
+      remaining -= level * 100;
+      level++;
+    }
+    return level;
+  }
+
+  void _showLevelInfo() {
+    final totalExp = _getInt('total_points');
+    var level = 1;
+    var used = totalExp;
+    while (used >= level * 100) {
+      used -= level * 100;
+      level++;
+    }
+    final required = level * 100;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Level $level',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text('Total EXP: $totalExp'),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: used / required,
+                minHeight: 9,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              const SizedBox(height: 8),
+              Text('$used / $required EXP menuju Level ${level + 1}'),
+              const SizedBox(height: 12),
+              const Text(
+                'EXP adalah total seumur akun dan tidak berkurang saat level naik. Kebutuhan naik tiap level: 100 EXP, lalu 200 EXP, 300 EXP, dan seterusnya.',
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -607,9 +672,7 @@ class _HomePageState extends State<HomePage> {
             ),
 
             TextButton(
-              onPressed: () {
-                // Nanti buka Chat Room
-              },
+              onPressed: () => widget.onOpenCommunity?.call(2),
               child: const Text('See all'),
             ),
           ],
@@ -756,10 +819,21 @@ class _HomePageState extends State<HomePage> {
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
 
-          onTap: () {
-            // Nanti diarahkan ke ChatRoomPage
-            //
-            // Navigator.push(...)
+          onTap: () async {
+            final conversationId = int.tryParse(
+              conversation?['id']?.toString() ?? '',
+            );
+            if (conversationId == null) return;
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => CommunityChatPage(
+                  conversationId: conversationId,
+                  title: title,
+                  isGroup: type == 'GROUP',
+                ),
+              ),
+            );
+            if (mounted) _loadHome();
           },
 
           child: Padding(
@@ -998,9 +1072,7 @@ class _HomePageState extends State<HomePage> {
             ),
 
             TextButton(
-              onPressed: () {
-                // Nanti menuju CommunityPage
-              },
+              onPressed: () => widget.onOpenCommunity?.call(1),
               child: const Text('See all'),
             ),
           ],
@@ -1092,16 +1164,15 @@ class _HomePageState extends State<HomePage> {
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
 
-          onTap: () {
-            // Nanti:
-            // Navigator.push(
-            //   context,
-            //   MaterialPageRoute(
-            //     builder: (_) => ForumDetailPage(
-            //       forumId: forum['id'],
-            //     ),
-            //   ),
-            // );
+          onTap: () async {
+            final postId = int.tryParse(forum['id']?.toString() ?? '');
+            if (postId == null) return;
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ForumDetailPage(postId: postId),
+              ),
+            );
+            if (mounted) _loadHome();
           },
 
           child: Padding(

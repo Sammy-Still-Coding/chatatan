@@ -17,14 +17,21 @@ class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
   final List<int> _tabHistory = [];
   final GlobalKey<LibraryPageState> _libraryKey = GlobalKey<LibraryPageState>();
+  final GlobalKey<CommunityPageState> _communityKey =
+      GlobalKey<CommunityPageState>();
 
   late final List<Widget> _pages = [
-    const HomePage(),
+    HomePage(onOpenCommunity: _openCommunityFromHome),
     LibraryPage(key: _libraryKey),
     const ScanPage(),
-    const CommunityPage(),
+    CommunityPage(key: _communityKey),
     const ProfilePage(),
   ];
+
+  void _openCommunityFromHome(int tab) {
+    _communityKey.currentState?.selectTab(tab);
+    _onItemTapped(3);
+  }
 
   void _onItemTapped(int index) {
     if (index == _currentIndex) return;

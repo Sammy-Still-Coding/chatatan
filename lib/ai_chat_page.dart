@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'attachment_preview.dart';
 import 'library_attachment_picker.dart';
+import 'db_helper.dart';
 
 class AiChatPage extends StatefulWidget {
   const AiChatPage({super.key});
@@ -18,6 +19,7 @@ class AiChatPage extends StatefulWidget {
 
 class _AiChatPageState extends State<AiChatPage> {
   final _client = Supabase.instance.client;
+  final _db = DbHelper();
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final List<Map<String, dynamic>> _messages = [];
@@ -25,11 +27,41 @@ class _AiChatPageState extends State<AiChatPage> {
   LibraryAttachment? _attachment;
   Map<String, dynamic>? _tokenStatus;
   String _model = 'standard';
+  int? _conversationId;
+  bool _loadingHistory = true;
 
   @override
   void initState() {
     super.initState();
     _refreshTokenStatus();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final conversationId = await _db.getOrCreateLatestAiConversation();
+      final saved = await _db.getAiMessages(conversationId);
+      if (!mounted) return;
+      setState(() {
+        _conversationId = conversationId;
+        _messages
+          ..clear()
+          ..addAll(
+            saved.map(
+              (message) => {
+                'role': message['sender_type']?.toString() == 'AI'
+                    ? 'assistant'
+                    : 'user',
+                'content': message['content']?.toString() ?? '',
+              },
+            ),
+          );
+      });
+    } catch (_) {
+      // The AI can still be used if the history SQL/RLS migration is pending.
+    } finally {
+      if (mounted) setState(() => _loadingHistory = false);
+    }
   }
 
   @override
@@ -98,6 +130,14 @@ class _AiChatPageState extends State<AiChatPage> {
         _controller.clear();
         _attachment = null;
       });
+      if (_conversationId != null) {
+        await _db.saveAiMessage(
+          conversationId: _conversationId!,
+          senderType: 'USER',
+          content: sent['content'].toString(),
+          messageType: attachment == null ? 'TEXT' : 'FILE',
+        );
+      }
       final response = await _client.functions.invoke(
         'smart-action',
         body: {
@@ -132,12 +172,15 @@ class _AiChatPageState extends State<AiChatPage> {
       if (data['token_status'] is Map) {
         _tokenStatus = Map<String, dynamic>.from(data['token_status']);
       }
-      setState(
-        () => _messages.add({
-          'role': 'assistant',
-          'content': data['answer']?.toString() ?? 'AI tidak memberi jawaban.',
-        }),
-      );
+      final answer = data['answer']?.toString() ?? 'AI tidak memberi jawaban.';
+      setState(() => _messages.add({'role': 'assistant', 'content': answer}));
+      if (_conversationId != null) {
+        await _db.saveAiMessage(
+          conversationId: _conversationId!,
+          senderType: 'AI',
+          content: answer,
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -205,7 +248,9 @@ class _AiChatPageState extends State<AiChatPage> {
       children: [
         _buildTokenBar(),
         Expanded(
-          child: _messages.isEmpty
+          child: _loadingHistory
+              ? const Center(child: CircularProgressIndicator())
+              : _messages.isEmpty
               ? const Center(
                   child: Text(
                     'Tanyakan materi, atau kirim gambar/dokumen untuk dibahas.',

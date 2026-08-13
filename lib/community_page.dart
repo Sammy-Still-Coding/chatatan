@@ -7,10 +7,12 @@ import 'ai_chat_page.dart';
 import 'forum_detail_page.dart';
 
 class CommunityPage extends StatefulWidget {
-  const CommunityPage({super.key});
+  const CommunityPage({super.key, this.initialTabIndex = 1});
+
+  final int initialTabIndex;
 
   @override
-  State<CommunityPage> createState() => _CommunityPageState();
+  State<CommunityPage> createState() => CommunityPageState();
 }
 
 class _UserSearchSheet extends StatefulWidget {
@@ -232,11 +234,11 @@ class _UnreadBadge extends StatelessWidget {
   }
 }
 
-class _CommunityPageState extends State<CommunityPage> {
+class CommunityPageState extends State<CommunityPage> {
   final DbHelper _dbHelper = DbHelper();
 
   // 0: Groups, 1: Forum, 2: Chats. Forum menjadi halaman Community default.
-  int _selectedTabIndex = 1;
+  late int _selectedTabIndex;
   bool _isLoading = false;
   List<Map<String, dynamic>> _recentChats = [];
   List<Map<String, dynamic>> _groups = [];
@@ -245,7 +247,15 @@ class _CommunityPageState extends State<CommunityPage> {
   @override
   void initState() {
     super.initState();
+    _selectedTabIndex = widget.initialTabIndex.clamp(0, 2);
     _loadRecentChats();
+  }
+
+  void selectTab(int index) {
+    final tab = index.clamp(0, 2);
+    if (_selectedTabIndex == tab) return;
+    setState(() => _selectedTabIndex = tab);
+    if (tab == 0 || tab == 2) _loadRecentChats();
   }
 
   /// Mengambil daftar percakapan terbaru

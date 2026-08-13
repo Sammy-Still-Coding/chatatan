@@ -20,6 +20,66 @@ class DbHelper {
     return _client.auth.currentUser;
   }
 
+  // ============================================================
+  // AI CHAT HISTORY (private to the signed-in account)
+  // ============================================================
+
+  Future<int> getOrCreateLatestAiConversation() async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    final existing = await _client
+        .from('ai_conversations')
+        .select('id')
+        .eq('user_id', user.id)
+        .isFilter('deleted_at', null)
+        .order('updated_at', ascending: false)
+        .limit(1);
+    if (existing.isNotEmpty) return int.parse(existing.first['id'].toString());
+    final created = await _client
+        .from('ai_conversations')
+        .insert({
+          'user_id': user.id,
+          'title': 'ChaTatan AI',
+          'conversation_type': 'GENERAL',
+        })
+        .select('id')
+        .single();
+    return int.parse(created['id'].toString());
+  }
+
+  Future<List<Map<String, dynamic>>> getAiMessages(int conversationId) async {
+    final user = currentUser;
+    if (user == null) return [];
+    final response = await _client
+        .from('ai_messages')
+        .select('id, sender_type, content, message_type, created_at')
+        .eq('conversation_id', conversationId)
+        .order('created_at');
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  Future<void> saveAiMessage({
+    required int conversationId,
+    required String senderType,
+    required String content,
+    String messageType = 'TEXT',
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    await _client.from('ai_messages').insert({
+      'conversation_id': conversationId,
+      'sender_type': senderType,
+      'user_id': senderType == 'AI' ? null : user.id,
+      'content': content,
+      'message_type': messageType,
+    });
+    await _client
+        .from('ai_conversations')
+        .update({'updated_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('id', conversationId)
+        .eq('user_id', user.id);
+  }
+
   bool get isLoggedIn {
     return currentUser != null;
   }

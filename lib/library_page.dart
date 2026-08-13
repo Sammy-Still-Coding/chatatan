@@ -85,10 +85,8 @@ class LibraryPageState extends State<LibraryPage> {
 
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _folders = [];
-  List<Map<String, dynamic>> _categories = [];
   String _searchQuery = '';
   int? _selectedFolderId;
-  int? _selectedCategoryId;
   bool _favoritesOnly = false;
 
   bool _isLoading = true;
@@ -136,15 +134,9 @@ class LibraryPageState extends State<LibraryPage> {
       final matchesFolder = _selectedFolderId == null
           ? item['folder_id'] == null
           : item['folder_id'] == _selectedFolderId;
-      final matchesCategory =
-          _selectedCategoryId == null ||
-          item['category_id'] == _selectedCategoryId;
       final matchesFavorite = !_favoritesOnly || item['is_favorite'] == true;
 
-      return matchesSearch &&
-          matchesFolder &&
-          matchesCategory &&
-          matchesFavorite;
+      return matchesSearch && matchesFolder && matchesFavorite;
     }).toList();
   }
 
@@ -182,11 +174,9 @@ class LibraryPageState extends State<LibraryPage> {
       final results = await Future.wait([
         _dbHelper.getLibraryItems(),
         _dbHelper.getLibraryFolders(),
-        _dbHelper.getLibraryCategories(),
       ]);
       final items = results[0];
       final folders = results[1];
-      final categories = results[2];
 
       final Map<int, String> imageUrls = {};
       final Map<int, String> pdfUrls = {};
@@ -257,7 +247,6 @@ class LibraryPageState extends State<LibraryPage> {
       setState(() {
         _items = List<Map<String, dynamic>>.from(items);
         _folders = List<Map<String, dynamic>>.from(folders);
-        _categories = List<Map<String, dynamic>>.from(categories);
 
         _imageUrls
           ..clear()
@@ -818,25 +807,6 @@ class LibraryPageState extends State<LibraryPage> {
                     ),
                   ],
                   onChanged: (value) => setDialogState(() => folderId = value),
-                ),
-                DropdownButtonFormField<int?>(
-                  initialValue: categoryId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Kategori'),
-                  items: [
-                    const DropdownMenuItem<int?>(
-                      value: null,
-                      child: Text('Tanpa kategori'),
-                    ),
-                    ..._categories.map(
-                      (category) => DropdownMenuItem<int?>(
-                        value: int.tryParse(category['id'].toString()),
-                        child: Text(category['name']?.toString() ?? 'Kategori'),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) =>
-                      setDialogState(() => categoryId = value),
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -1402,10 +1372,6 @@ class LibraryPageState extends State<LibraryPage> {
                   Text('Ukuran: ${_formatFileSize(fileSize)}'),
                 if (item['folder_id'] != null)
                   Text('Folder: ${_nameForId(_folders, item['folder_id'])}'),
-                if (item['category_id'] != null)
-                  Text(
-                    'Kategori: ${_nameForId(_categories, item['category_id'])}',
-                  ),
                 if ((item['description']?.toString() ?? '').isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text(item['description'].toString()),
@@ -1531,7 +1497,7 @@ class LibraryPageState extends State<LibraryPage> {
   }
 
   Widget _buildFilterBar() {
-    final hasFilters = _selectedCategoryId != null || _favoritesOnly;
+    final hasFilters = _favoritesOnly;
     return SizedBox(
       height: 46,
       child: ListView(
@@ -1544,23 +1510,12 @@ class LibraryPageState extends State<LibraryPage> {
             avatar: const Icon(Icons.star_outline, size: 18),
             onSelected: (value) => setState(() => _favoritesOnly = value),
           ),
-          const SizedBox(width: 8),
-          ActionChip(
-            avatar: const Icon(Icons.category_outlined, size: 18),
-            label: Text(
-              _selectedCategoryId == null
-                  ? 'Semua kategori'
-                  : _nameForId(_categories, _selectedCategoryId),
-            ),
-            onPressed: _showCategoryFilter,
-          ),
           if (hasFilters) ...[
             const SizedBox(width: 8),
             ActionChip(
               avatar: const Icon(Icons.filter_alt_off_outlined, size: 18),
               label: const Text('Reset'),
               onPressed: () => setState(() {
-                _selectedCategoryId = null;
                 _favoritesOnly = false;
               }),
             ),
@@ -1666,42 +1621,6 @@ class LibraryPageState extends State<LibraryPage> {
         ],
       ),
     );
-  }
-
-  Future<void> _showCategoryFilter() async {
-    final selected = await showModalBottomSheet<int?>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const ListTile(title: Text('Pilih kategori')),
-            ListTile(
-              leading: const Icon(Icons.category_outlined),
-              title: const Text('Semua kategori'),
-              onTap: () => Navigator.pop(sheetContext),
-            ),
-            ..._categories.map(
-              (category) => ListTile(
-                leading: const Icon(Icons.category_outlined),
-                title: Text(category['name']?.toString() ?? 'Kategori'),
-                trailing:
-                    category['id']?.toString() ==
-                        _selectedCategoryId?.toString()
-                    ? const Icon(Icons.check, color: Colors.deepPurple)
-                    : null,
-                onTap: () => Navigator.pop(
-                  sheetContext,
-                  int.tryParse(category['id'].toString()),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted) return;
-    setState(() => _selectedCategoryId = selected);
   }
 
   Future<void> _createFolder() async {
