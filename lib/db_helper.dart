@@ -1859,7 +1859,7 @@ class DbHelper {
 
     final response = await _client
         .from('forum_bookmarks')
-        .select(', forum_posts(, users(*))')
+        .select('*, forum_posts!inner(*, users(*))')
         .eq('user_id', user.id)
         .order('created_at', ascending: false);
 
