@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'db_helper.dart';
+import 'community_chat_page.dart';
+import 'forum_detail_page.dart';
 
 /// In-app notification centre. OS push notifications are intentionally kept
 /// separate: this page always works while the app is open and keeps a history
@@ -47,6 +49,62 @@ class _NotificationPageState extends State<NotificationPage> {
         return {...item, 'is_read': true};
       }).toList();
     });
+  }
+
+  Map<String, dynamic> _dataFor(Map<String, dynamic> item) {
+    final raw = item['data_json'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+  }
+
+  Future<void> _openNotification(Map<String, dynamic> item) async {
+    final id = int.tryParse(item['id'].toString());
+    if (id != null && item['is_read'] != true)
+      await _db.markNotificationRead(id);
+    if (!mounted) return;
+    setState(() => item['is_read'] = true);
+
+    final data = _dataFor(item);
+    final entityType = item['entity_type']?.toString();
+    if (entityType == 'FORUM_POST') {
+      final postId = int.tryParse(
+        (data['post_id'] ?? item['entity_id']).toString(),
+      );
+      if (postId != null && mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ForumDetailPage(postId: postId)),
+        );
+      }
+      return;
+    }
+    if (entityType == 'CONVERSATION') {
+      final conversationId = int.tryParse(
+        (data['conversation_id'] ?? item['entity_id']).toString(),
+      );
+      if (conversationId == null) return;
+      try {
+        final room = await _db.getConversation(conversationId);
+        if (!mounted || room == null) return;
+        final isGroup = room['conversation_type']?.toString() == 'GROUP';
+        final title = room['title']?.toString().trim();
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => CommunityChatPage(
+              conversationId: conversationId,
+              title: title == null || title.isEmpty
+                  ? (isGroup ? 'Grup chat' : 'Chat')
+                  : title,
+              isGroup: isGroup,
+            ),
+          ),
+        );
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Tidak dapat membuka pesan: $error')),
+          );
+        }
+      }
+    }
   }
 
   IconData _iconFor(String type) {
@@ -155,18 +213,7 @@ class _NotificationPageState extends State<NotificationPage> {
                                 ),
                               ],
                             ),
-                            onTap: () async {
-                              final id = int.tryParse(item['id'].toString());
-                              if (id != null && !isRead)
-                                await _db.markNotificationRead(id);
-                              if (mounted)
-                                setState(
-                                  () => _items[index] = {
-                                    ...item,
-                                    'is_read': true,
-                                  },
-                                );
-                            },
+                            onTap: () => _openNotification(item),
                           ),
                         );
                       },

@@ -28,13 +28,16 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   Timer? _presenceTimer;
+  StreamSubscription<List<Map<String, dynamic>>>? _memberReadSubscription;
 
   final Map<String, String> _userCache = {};
   final Set<String> _loadingUserIds = {};
   bool _isUploading = false;
   String _roomSubtitle = '';
   bool _isPinned = false;
-  int? _highestOtherReadMessageId;
+  List<Map<String, dynamic>> _otherMembers = [];
+  Map<String, Map<String, dynamic>> _memberProfiles = {};
+  int _lastReadMessageIdSent = 0;
   late String _roomTitle;
 
   int get _convIdInt => int.tryParse(widget.conversationId.toString()) ?? 0;
@@ -43,6 +46,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   @override
   void dispose() {
     _presenceTimer?.cancel();
+    _memberReadSubscription?.cancel();
     _dbHelper.setMyPresence(false);
     _messageController.dispose();
     _scrollController.dispose();
@@ -55,9 +59,31 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
     _roomTitle = widget.title;
     _dbHelper.setMyPresence(true);
     _loadRoomInfo();
+    _memberReadSubscription = _supabase
+        .from('conversation_members')
+        .stream(primaryKey: ['conversation_id', 'user_id'])
+        .eq('conversation_id', _convIdInt)
+        .listen(_syncReadReceipts);
     _presenceTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       _dbHelper.setMyPresence(true);
       _loadRoomInfo();
+    });
+  }
+
+  void _syncReadReceipts(List<Map<String, dynamic>> members) {
+    if (!mounted) return;
+    final others = members
+        .where((member) => member['user_id']?.toString() != currentUserId)
+        .map((member) => Map<String, dynamic>.from(member))
+        .toList();
+    setState(() => _otherMembers = others);
+  }
+
+  void _markRoomRead(int messageId) {
+    if (messageId <= _lastReadMessageIdSent) return;
+    _lastReadMessageIdSent = messageId;
+    _dbHelper.markConversationRead(_convIdInt, messageId).catchError((_) {
+      _lastReadMessageIdSent = 0;
     });
   }
 
@@ -95,15 +121,17 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
       } else {
         _roomSubtitle = '${members.length} anggota';
       }
-      final otherReads = other
-          .map(
-            (member) =>
-                int.tryParse(member['last_read_message_id']?.toString() ?? ''),
-          )
-          .whereType<int>();
-      _highestOtherReadMessageId = otherReads.isEmpty
-          ? null
-          : otherReads.reduce((a, b) => a > b ? a : b);
+      _otherMembers = other;
+      try {
+        final profiles = await _dbHelper.getConversationMembers(_convIdInt);
+        _memberProfiles = {
+          for (final profile in profiles)
+            profile['user_id']?.toString() ?? '': profile,
+        };
+      } catch (_) {
+        // Read receipts still work with initials if profile lookup is blocked.
+      }
+      if (!mounted) return;
       final rawOwnSettings = own.isEmpty
           ? null
           : own.first['conversation_member_settings'];
@@ -774,6 +802,73 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
     );
   }
 
+  Widget _buildReadReceipt(int messageId) {
+    final readers = _otherMembers.where((member) {
+      final lastRead = int.tryParse(
+        member['last_read_message_id']?.toString() ?? '',
+      );
+      return lastRead != null && lastRead >= messageId;
+    }).toList();
+    if (readers.isEmpty) return const SizedBox.shrink();
+
+    if (!widget.isGroup) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 2),
+        child: Text(
+          'Seen',
+          style: TextStyle(color: Colors.white70, fontSize: 10),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Seen',
+            style: TextStyle(color: Colors.white70, fontSize: 10),
+          ),
+          const SizedBox(width: 4),
+          ...readers.take(4).map((member) {
+            final id = member['user_id']?.toString() ?? '';
+            final profile = _memberProfiles[id] ?? const <String, dynamic>{};
+            final name = profile['username']?.toString() ?? 'U';
+            final avatar = profile['avatar_url']?.toString();
+            return Padding(
+              padding: const EdgeInsets.only(left: 2),
+              child: CircleAvatar(
+                radius: 8,
+                backgroundColor: Colors.white,
+                backgroundImage: avatar == null || avatar.isEmpty
+                    ? null
+                    : NetworkImage(avatar),
+                child: avatar == null || avatar.isEmpty
+                    ? Text(
+                        name.substring(0, 1).toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 8,
+                          color: Color(0xFF6C63FF),
+                        ),
+                      )
+                    : null,
+              ),
+            );
+          }),
+          if (readers.length > 4)
+            Padding(
+              padding: const EdgeInsets.only(left: 3),
+              child: Text(
+                '+${readers.length - 4}',
+                style: const TextStyle(color: Colors.white70, fontSize: 9),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -865,8 +960,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
 
                 if (messages.isNotEmpty) {
                   final id = int.tryParse(messages.last['id'].toString());
-                  if (id != null)
-                    _dbHelper.markConversationRead(_convIdInt, id);
+                  if (id != null) _markRoomRead(id);
                 }
 
                 if (messages.isEmpty) {
@@ -956,18 +1050,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                               ),
                             ),
                             if (isMe &&
-                                _highestOtherReadMessageId != null &&
                                 int.tryParse(msg['id']?.toString() ?? '') !=
-                                    null &&
-                                int.parse(msg['id'].toString()) <=
-                                    _highestOtherReadMessageId!)
-                              const Padding(
-                                padding: EdgeInsets.only(top: 2),
-                                child: Icon(
-                                  Icons.remove_red_eye_outlined,
-                                  size: 13,
-                                  color: Colors.white70,
-                                ),
+                                    null)
+                              _buildReadReceipt(
+                                int.parse(msg['id'].toString()),
                               ),
                           ],
                         ),

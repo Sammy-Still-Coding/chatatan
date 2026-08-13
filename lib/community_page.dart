@@ -675,7 +675,17 @@ class _CommunityPageState extends State<CommunityPage> {
           final title = rawTitle.isEmpty
               ? 'Grup #${group['id'] ?? index + 1}'
               : rawTitle;
-          final memberCount = group['member_count'] ?? 'Anggota';
+          final lastMessage = group['last_message'];
+          final messageType = lastMessage is Map
+              ? lastMessage['message_type']?.toString()
+              : null;
+          final preview = lastMessage is Map
+              ? messageType == 'IMAGE'
+                    ? '📷 Foto'
+                    : messageType == 'FILE'
+                    ? '📎 Dokumen'
+                    : lastMessage['content']?.toString() ?? 'Belum ada pesan'
+              : 'Belum ada pesan';
 
           return Card(
             elevation: 0,
@@ -693,7 +703,9 @@ class _CommunityPageState extends State<CommunityPage> {
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               subtitle: Text(
-                memberCount == 'Anggota' ? 'Grup chat' : '$memberCount members',
+                preview,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               trailing: _UnreadBadge(
                 count:
@@ -797,6 +809,7 @@ class _CommunityPageState extends State<CommunityPage> {
             ..._recentChats.map((chatData) {
               final conversation = chatData['conversation'] ?? {};
               final otherUser = chatData['other_user'] ?? {};
+              final presence = chatData['other_presence'] ?? {};
               final settings = chatData['settings'] ?? {};
               final lastMessage = chatData['last_message'];
 
@@ -810,6 +823,10 @@ class _CommunityPageState extends State<CommunityPage> {
                   : defaultTitle;
 
               final avatarUrl = otherUser['avatar_url'];
+              final isOnline = presence['is_online'] == true;
+              final seen = DateTime.tryParse(
+                presence['last_seen_at']?.toString() ?? '',
+              )?.toLocal();
               final messageContent = lastMessage != null
                   ? lastMessage['content'] ?? ''
                   : 'Belum ada pesan';
@@ -829,6 +846,8 @@ class _CommunityPageState extends State<CommunityPage> {
                 lastMessage: messageContent,
                 timeStr: timeStr,
                 avatarUrl: avatarUrl,
+                isOnline: isOnline,
+                lastSeen: seen == null ? null : _formatLastSeen(seen),
                 isPinned: settings['is_pinned'] == true,
                 unreadCount:
                     _unreadCounts[int.tryParse(conversation['id'].toString()) ??
@@ -937,6 +956,8 @@ class _CommunityPageState extends State<CommunityPage> {
     required String lastMessage,
     required String timeStr,
     String? avatarUrl,
+    bool isOnline = false,
+    String? lastSeen,
     bool isPinned = false,
     int unreadCount = 0,
     required VoidCallback onTap,
@@ -948,29 +969,62 @@ class _CommunityPageState extends State<CommunityPage> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: CircleAvatar(
-          radius: 24,
-          backgroundColor: _getAvatarColor(title),
-          backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
-          child: avatarUrl == null
-              ? Text(
-                  _getInitials(title),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: _getAvatarColor(title),
+              backgroundImage: avatarUrl != null
+                  ? NetworkImage(avatarUrl)
+                  : null,
+              child: avatarUrl == null
+                  ? Text(
+                      _getInitials(title),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    )
+                  : null,
+            ),
+            if (isOnline)
+              Positioned(
+                right: -1,
+                bottom: -1,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
                   ),
-                )
-              : null,
+                ),
+              ),
+          ],
         ),
         title: Text(
           title,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
         ),
-        subtitle: Text(
-          lastMessage,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 13, color: Colors.black54),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              lastMessage,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, color: Colors.black54),
+            ),
+            Text(
+              isOnline ? 'Online' : (lastSeen ?? 'Offline'),
+              style: TextStyle(
+                fontSize: 11,
+                color: isOnline ? Colors.green : Colors.grey,
+              ),
+            ),
+          ],
         ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1014,6 +1068,14 @@ class _CommunityPageState extends State<CommunityPage> {
       const Color(0xFFAB47BC),
     ];
     return colors[name.hashCode.abs() % colors.length];
+  }
+
+  String _formatLastSeen(DateTime value) {
+    final diff = DateTime.now().difference(value);
+    if (diff.inMinutes < 1) return 'Terakhir aktif baru saja';
+    if (diff.inHours < 1) return 'Terakhir aktif ${diff.inMinutes} mnt lalu';
+    if (diff.inDays < 1) return 'Terakhir aktif ${diff.inHours} jam lalu';
+    return 'Terakhir aktif ${diff.inDays} hari lalu';
   }
 
   /// Helper mendapatkan inisial 2 huruf (contoh: "Ivan Pamungkas" -> "IP")

@@ -105,7 +105,10 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Pet aktif diperbarui.')));
-      setState(() => _data = _load());
+      // `setState` must be synchronous. Assign the new Future first, then
+      // notify Flutter that the FutureBuilder needs to rebuild.
+      _data = _load();
+      setState(() {});
     } catch (error) {
       if (mounted)
         ScaffoldMessenger.of(

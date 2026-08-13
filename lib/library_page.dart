@@ -130,8 +130,12 @@ class LibraryPageState extends State<LibraryPage> {
           title.contains(query) ||
           description.contains(query) ||
           originalName.contains(query);
-      final matchesFolder =
-          _selectedFolderId == null || item['folder_id'] == _selectedFolderId;
+      // Root Library only contains loose files. Files that have been moved
+      // belong in their folder page, rather than appearing as a duplicate in
+      // the root list.
+      final matchesFolder = _selectedFolderId == null
+          ? item['folder_id'] == null
+          : item['folder_id'] == _selectedFolderId;
       final matchesCategory =
           _selectedCategoryId == null ||
           item['category_id'] == _selectedCategoryId;

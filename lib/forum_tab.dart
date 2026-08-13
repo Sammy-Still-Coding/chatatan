@@ -40,7 +40,11 @@ class _ForumTabState extends State<ForumTab> {
             dislike_count,
             users:user_id (username, full_name, avatar_url),
             forum_categories ( name ),
-            forum_replies ( count )
+            forum_replies ( count ),
+            forum_attachments (
+              id, curation_status, relevance_score, relevance_label,
+              files (storage_path, original_name, mime_type, extension)
+            )
           ''')
           .order('created_at', ascending: false);
 
@@ -129,9 +133,9 @@ class _ForumTabState extends State<ForumTab> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal mengubah bookmark: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal mengubah bookmark: $e')));
     }
   }
 
@@ -343,6 +347,14 @@ class _ForumTabState extends State<ForumTab> {
                                   height: 1.4,
                                 ),
                               ),
+                              if (post['forum_attachments'] is List &&
+                                  (post['forum_attachments'] as List)
+                                      .isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                ...List<Map<String, dynamic>>.from(
+                                  post['forum_attachments'] as List,
+                                ).map(_buildAttachmentPreview),
+                              ],
                               const SizedBox(height: 14),
 
                               Row(
@@ -443,6 +455,107 @@ class _ForumTabState extends State<ForumTab> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentPreview(Map<String, dynamic> attachment) {
+    final file = attachment['files'] is Map
+        ? Map<String, dynamic>.from(attachment['files'] as Map)
+        : <String, dynamic>{};
+    final storagePath = file['storage_path']?.toString() ?? '';
+    final extension = file['extension']?.toString().toLowerCase() ?? '';
+    final mime = file['mime_type']?.toString().toLowerCase() ?? '';
+    final isImage =
+        mime.startsWith('image/') ||
+        const {'png', 'jpg', 'jpeg', 'gif', 'webp'}.contains(extension);
+    final status = attachment['curation_status']?.toString() ?? 'PENDING';
+    final score = attachment['relevance_score'];
+    final passed = status == 'PASSED';
+    final color = passed
+        ? Colors.green
+        : status == 'FAILED'
+        ? Colors.redAccent
+        : Colors.orange;
+    final label = passed
+        ? 'Lolos${score == null ? '' : ' · $score/100'}'
+        : status == 'FAILED'
+        ? 'Tidak lolos${score == null ? '' : ' · $score/100'}'
+        : 'Menunggu kurasi';
+    final badge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+
+    if (isImage && storagePath.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: FutureBuilder<String>(
+                future: _dbHelper.getLibraryFileUrl(storagePath),
+                builder: (_, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const SizedBox(
+                      height: 150,
+                      child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    );
+                  }
+                  return Image.network(
+                    snapshot.data!,
+                    height: 180,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox(
+                      height: 110,
+                      child: Center(child: Icon(Icons.broken_image_outlined)),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Positioned(top: 8, right: 8, child: badge),
+          ],
+        ),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F6FF),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.attach_file_rounded, color: Color(0xFF6C63FF)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              file['original_name']?.toString() ?? 'Lampiran',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 8),
+          badge,
+        ],
       ),
     );
   }

@@ -464,6 +464,31 @@ class DbHelper {
     final files = attachment['files'];
     if (files is! Map) throw Exception('File forum tidak ditemukan.');
 
+    // Store the source attachment in library_shares. This is more precise than
+    // matching file_id: the same physical file may be shared in another room.
+    final links = await _client
+        .from('library_shares')
+        .select('library_item_id')
+        .eq('shared_by', user.id)
+        .eq('target_type', 'FORUM')
+        .eq('target_id', attachmentId);
+    final linkedIds = links
+        .map((row) => row['library_item_id'])
+        .where((id) => id != null)
+        .toList();
+    if (linkedIds.isNotEmpty) {
+      final activeCopy = await _client
+          .from('library_items')
+          .select('id')
+          .eq('user_id', user.id)
+          .inFilter('id', linkedIds)
+          .isFilter('deleted_at', null)
+          .maybeSingle();
+      if (activeCopy != null) {
+        throw Exception('File ini sudah tersimpan di Library Anda.');
+      }
+    }
+
     var folder = await _client
         .from('library_folders')
         .select('id')
@@ -479,19 +504,29 @@ class DbHelper {
     final extension = files['extension']?.toString() ?? '';
     final mimeType = files['mime_type']?.toString() ?? _getMimeType(extension);
     final categoryId = await _libraryCategoryFromForumAttachment(attachment);
-    await _client.from('library_items').insert({
-      'user_id': user.id,
-      'folder_id': folder['id'],
-      'category_id': categoryId,
-      'title': files['original_name']?.toString() ?? 'Dokumen dari Forum',
-      'description': folderName == 'Dari Balasan Forum'
-          ? 'Disimpan dari balasan Forum'
-          : 'Disimpan dari Forum',
-      'source_type': 'SHARED',
-      'content_type': _getContentType(extension, mimeType),
-      'file_id': attachment['file_id'],
-      'visibility': 'PRIVATE',
-      'is_favorite': false,
+    final savedItem = await _client
+        .from('library_items')
+        .insert({
+          'user_id': user.id,
+          'folder_id': folder['id'],
+          'category_id': categoryId,
+          'title': files['original_name']?.toString() ?? 'Dokumen dari Forum',
+          'description': folderName == 'Dari Balasan Forum'
+              ? 'Disimpan dari balasan Forum'
+              : 'Disimpan dari Forum',
+          'source_type': 'SHARED',
+          'content_type': _getContentType(extension, mimeType),
+          'file_id': attachment['file_id'],
+          'visibility': 'PRIVATE',
+          'is_favorite': false,
+        })
+        .select('id')
+        .single();
+    await _client.from('library_shares').insert({
+      'library_item_id': savedItem['id'],
+      'shared_by': user.id,
+      'target_type': 'FORUM',
+      'target_id': attachmentId,
     });
   }
 
@@ -710,10 +745,25 @@ class DbHelper {
         }
       }
 
+      Map<String, dynamic>? otherPresence;
+      final otherUserId = otherUser?['id']?.toString();
+      if (otherUserId != null && otherUserId.isNotEmpty) {
+        try {
+          otherPresence = await _client
+              .from('user_presence')
+              .select('is_online, last_seen_at')
+              .eq('user_id', otherUserId)
+              .maybeSingle();
+        } catch (_) {
+          // Presence is optional; chat listing must not fail without it.
+        }
+      }
+
       result.add({
         'conversation': conversation,
         'last_message': lastMessage,
         'other_user': otherUser,
+        'other_presence': otherPresence,
       });
     }
     for (final item in result) {
@@ -974,11 +1024,15 @@ class DbHelper {
     final user = currentUser;
     if (user == null) throw Exception('User belum login.');
 
-    await _client
+    final deleted = await _client
         .from('library_items')
         .update({'deleted_at': DateTime.now().toUtc().toIso8601String()})
         .eq('id', itemId)
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .select('id');
+    if (deleted.isEmpty) {
+      throw Exception('Item tidak dapat dihapus atau sudah tidak tersedia.');
+    }
   }
 
   // ============================================================
@@ -1474,11 +1528,15 @@ class DbHelper {
   Future<void> markConversationRead(int conversationId, int messageId) async {
     final user = currentUser;
     if (user == null) return;
-    await _client
+    final updated = await _client
         .from('conversation_members')
         .update({'last_read_message_id': messageId})
         .eq('conversation_id', conversationId)
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .select('last_read_message_id');
+    if (updated.isEmpty) {
+      throw Exception('Status baca tidak dapat diperbarui.');
+    }
     try {
       await _client
           .from('notifications')
@@ -1678,6 +1736,24 @@ class DbHelper {
       }
     }
 
+    // Group cards use the same meaningful preview as private chats.
+    for (final group in groups) {
+      try {
+        final messages = await _client
+            .from('messages')
+            .select('content, message_type, created_at')
+            .eq('conversation_id', group['id'])
+            .isFilter('deleted_at', null)
+            .order('created_at', ascending: false)
+            .limit(1);
+        if (messages.isNotEmpty) {
+          group['last_message'] = Map<String, dynamic>.from(messages.first);
+        }
+      } catch (_) {
+        // The group remains visible if a message preview is unavailable.
+      }
+    }
+
     return groups;
   }
 
@@ -1756,6 +1832,14 @@ class DbHelper {
       final id = member['user_id'].toString();
       return {...Map<String, dynamic>.from(member), ...(byId[id] ?? {})};
     }).toList();
+  }
+
+  Future<Map<String, dynamic>?> getConversation(int conversationId) async {
+    return await _client
+        .from('conversations')
+        .select('id, title, conversation_type')
+        .eq('id', conversationId)
+        .maybeSingle();
   }
 
   // ------------------------------------------------------------
