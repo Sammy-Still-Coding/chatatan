@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'db_helper.dart';
 import 'login_page.dart';
+import 'pet_selection_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -12,7 +13,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final DbHelper _dbHelper = DbHelper();
-  
+
   List<Map<String, dynamic>> _recentChats = [];
   List<Map<String, dynamic>> _recentForums = [];
 
@@ -42,13 +43,9 @@ class _HomePageState extends State<HomePage> {
     try {
       final data = await _dbHelper.getHomeData();
 
-      final recentChats = await _dbHelper.getRecentChats(
-        limit: 3,
-      );
+      final recentChats = await _dbHelper.getRecentChats(limit: 3);
 
-      final recentForums = await _dbHelper.getRecentForums(
-        limit: 3,
-      );
+      final recentForums = await _dbHelper.getRecentForums(limit: 3);
 
       if (!mounted) return;
 
@@ -83,9 +80,7 @@ class _HomePageState extends State<HomePage> {
 
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(
-        builder: (_) => const LoginPage(),
-      ),
+      MaterialPageRoute(builder: (_) => const LoginPage()),
       (route) => false,
     );
   }
@@ -97,13 +92,11 @@ class _HomePageState extends State<HomePage> {
   String _getUsername() {
     final username = _profile?['username'];
 
-    if (username != null &&
-        username.toString().trim().isNotEmpty) {
+    if (username != null && username.toString().trim().isNotEmpty) {
       return username.toString();
     }
 
-    final metadata =
-        _dbHelper.currentUser?.userMetadata;
+    final metadata = _dbHelper.currentUser?.userMetadata;
 
     final metadataUsername = metadata?['username'];
 
@@ -166,29 +159,20 @@ class _HomePageState extends State<HomePage> {
 
         title: const Text(
           'ChaTatan',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
         ),
 
         actions: [
           IconButton(
             tooltip: 'Refresh',
             onPressed: _loadHome,
-            icon: const Icon(
-              Icons.refresh_rounded,
-              color: Colors.black87,
-            ),
+            icon: const Icon(Icons.refresh_rounded, color: Colors.black87),
           ),
 
           IconButton(
             tooltip: 'Logout',
             onPressed: _logout,
-            icon: const Icon(
-              Icons.logout_rounded,
-              color: Colors.black87,
-            ),
+            icon: const Icon(Icons.logout_rounded, color: Colors.black87),
           ),
         ],
       ),
@@ -203,9 +187,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_errorMessage != null) {
@@ -218,12 +200,7 @@ class _HomePageState extends State<HomePage> {
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
 
-        padding: const EdgeInsets.fromLTRB(
-          20,
-          8,
-          20,
-          32,
-        ),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
 
         children: [
           _buildGreeting(),
@@ -250,7 +227,7 @@ class _HomePageState extends State<HomePage> {
 
           const SizedBox(height: 24),
 
-          _buildDatabaseStatus(), 
+          _buildDatabaseStatus(),
 
           const SizedBox(height: 30),
         ],
@@ -281,10 +258,7 @@ class _HomePageState extends State<HomePage> {
 
         Text(
           'Ready to learn something today?',
-          style: TextStyle(
-            fontSize: 15,
-            color: Colors.grey.shade600,
-          ),
+          style: TextStyle(fontSize: 15, color: Colors.grey.shade600),
         ),
       ],
     );
@@ -298,74 +272,66 @@ class _HomePageState extends State<HomePage> {
     final streak = _getInt('current_streak');
     final longestStreak = _getInt('longest_streak');
 
-    return Container(
-      padding: const EdgeInsets.all(22),
+    return InkWell(
+      borderRadius: BorderRadius.circular(28),
+      onTap: _claimStreak,
+      child: Container(
+        padding: const EdgeInsets.all(22),
 
-      decoration: BoxDecoration(
-        color: Colors.deepPurple,
-        borderRadius: BorderRadius.circular(28),
-      ),
+        decoration: BoxDecoration(
+          color: Colors.deepPurple,
+          borderRadius: BorderRadius.circular(28),
+        ),
 
-      child: Row(
-        children: [
-          Container(
-            width: 64,
-            height: 64,
+        child: Row(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
 
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.16),
-              shape: BoxShape.circle,
-            ),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.16),
+                shape: BoxShape.circle,
+              ),
 
-            child: const Center(
-              child: Text(
-                '🔥',
-                style: TextStyle(
-                  fontSize: 32,
-                ),
+              child: const Center(
+                child: Text('🔥', style: TextStyle(fontSize: 32)),
               ),
             ),
-          ),
 
-          const SizedBox(width: 16),
+            const SizedBox(width: 16),
 
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Learning Streak',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Learning Streak',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
-                ),
 
-                const SizedBox(height: 3),
+                  const SizedBox(height: 3),
 
-                Text(
-                  '$streak days',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 25,
-                    fontWeight: FontWeight.bold,
+                  Text(
+                    '$streak days',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 25,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
 
-                const SizedBox(height: 3),
+                  const SizedBox(height: 3),
 
-                Text(
-                  'Best: $longestStreak days',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
+                  Text(
+                    'Best: $longestStreak days',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -380,115 +346,143 @@ class _HomePageState extends State<HomePage> {
     final petDescription = _getPetDescription();
     final petImage = _getPetImage();
 
-    return Container(
-      padding: const EdgeInsets.all(20),
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: _showPetPicker,
+      child: Container(
+        padding: const EdgeInsets.all(20),
 
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
 
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
 
-      child: Row(
-        children: [
-          Container(
-            width: 82,
-            height: 82,
+        child: Row(
+          children: [
+            Container(
+              width: 82,
+              height: 82,
 
-            decoration: BoxDecoration(
-              color: Colors.deepPurple.shade50,
-              borderRadius: BorderRadius.circular(22),
+              decoration: BoxDecoration(
+                color: Colors.deepPurple.shade50,
+                borderRadius: BorderRadius.circular(22),
+              ),
+
+              child: petImage != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+
+                      child: Image.network(
+                        petImage,
+                        fit: BoxFit.cover,
+
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.pets_rounded,
+                            size: 40,
+                            color: Colors.deepPurple,
+                          );
+                        },
+                      ),
+                    )
+                  : const Icon(
+                      Icons.pets_rounded,
+                      size: 40,
+                      color: Colors.deepPurple,
+                    ),
             ),
 
-            child: petImage != null
-                ? ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(22),
+            const SizedBox(width: 16),
 
-                    child: Image.network(
-                      petImage,
-                      fit: BoxFit.cover,
-
-                      errorBuilder:
-                          (context, error, stackTrace) {
-                        return const Icon(
-                          Icons.pets_rounded,
-                          size: 40,
-                          color: Colors.deepPurple,
-                        );
-                      },
-                    ),
-                  )
-                : const Icon(
-                    Icons.pets_rounded,
-                    size: 40,
-                    color: Colors.deepPurple,
-                  ),
-          ),
-
-          const SizedBox(width: 16),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  petName,
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                Text(
-                  petDescription,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-
-                  decoration: BoxDecoration(
-                    color: Colors.deepPurple.shade50,
-                    borderRadius:
-                        BorderRadius.circular(20),
-                  ),
-
-                  child: Text(
-                    'Level $petLevel',
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    petName,
                     style: const TextStyle(
-                      color: Colors.deepPurple,
-                      fontSize: 12,
+                      fontSize: 19,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-              ],
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    petDescription,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple.shade50,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+
+                    child: Text(
+                      'Level $petLevel',
+                      style: const TextStyle(
+                        color: Colors.deepPurple,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _claimStreak() async {
+    try {
+      final result = await _dbHelper.claimLearningStreak();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result['claimed'] == true
+                ? 'Streak ${result['streak']} hari tercatat · +${result['points']} poin'
+                : result['message']?.toString() ??
+                      'Streak hari ini sudah tercatat.',
+          ),
+        ),
+      );
+      await _loadHome();
+    } catch (error) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal mencatat streak: $error')),
+        );
+    }
+  }
+
+  Future<void> _showPetPicker() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PetSelectionPage()),
+    );
+    if (mounted) await _loadHome();
   }
 
   // ============================================================
@@ -546,10 +540,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             const Text(
               'Recent Chat',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
             TextButton(
@@ -566,16 +557,14 @@ class _HomePageState extends State<HomePage> {
         if (_recentChats.isEmpty)
           _buildEmptyChat()
         else
-          ..._recentChats.map(
-            (chat) => _buildChatItem(chat),
-          ),
+          ..._recentChats.map((chat) => _buildChatItem(chat)),
       ],
     );
   }
-  
-// ============================================================
-// EMPTY CHAT
-// ============================================================
+
+  // ============================================================
+  // EMPTY CHAT
+  // ============================================================
 
   Widget _buildEmptyChat() {
     return Container(
@@ -609,10 +598,7 @@ class _HomePageState extends State<HomePage> {
 
           const Text(
             'No recent chats',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
 
           const SizedBox(height: 5),
@@ -620,10 +606,7 @@ class _HomePageState extends State<HomePage> {
           Text(
             'Start a conversation with your friends or AI.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
           ),
         ],
       ),
@@ -634,49 +617,38 @@ class _HomePageState extends State<HomePage> {
   // CHAT ITEM
   // ============================================================
 
-  Widget _buildChatItem(
-    Map<String, dynamic> chat,
-  ) {
-    final conversation =
-        chat['conversation'] as Map<String, dynamic>?;
+  Widget _buildChatItem(Map<String, dynamic> chat) {
+    final conversation = chat['conversation'] as Map<String, dynamic>?;
 
-    final lastMessage =
-        chat['last_message'] as Map<String, dynamic>?;
+    final lastMessage = chat['last_message'] as Map<String, dynamic>?;
 
-    final otherUser =
-        chat['other_user'] as Map<String, dynamic>?;
+    final otherUser = chat['other_user'] as Map<String, dynamic>?;
 
-    final type =
-        conversation?['conversation_type']?.toString() ??
-            'PRIVATE';
+    final type = conversation?['conversation_type']?.toString() ?? 'PRIVATE';
 
     String title;
     IconData icon;
 
     if (type == 'AI') {
-      title = conversation?['title']?.toString() ??
-          'AI Assistant';
+      title = conversation?['title']?.toString() ?? 'AI Assistant';
 
       icon = Icons.auto_awesome_rounded;
     } else if (type == 'GROUP') {
-      title = conversation?['title']?.toString() ??
-          'Group Chat';
+      title = conversation?['title']?.toString() ?? 'Group Chat';
 
       icon = Icons.groups_rounded;
     } else {
-      title = otherUser?['username']?.toString() ??
+      title =
+          otherUser?['username']?.toString() ??
           conversation?['title']?.toString() ??
           'Private Chat';
 
       icon = Icons.person_rounded;
     }
 
-    final messageType =
-        lastMessage?['message_type']?.toString() ??
-            'TEXT';
+    final messageType = lastMessage?['message_type']?.toString() ?? 'TEXT';
 
-    final content =
-        lastMessage?['content']?.toString() ?? '';
+    final content = lastMessage?['content']?.toString() ?? '';
 
     String preview;
 
@@ -702,18 +674,13 @@ class _HomePageState extends State<HomePage> {
         break;
 
       default:
-        preview = content.isEmpty
-            ? 'No messages yet'
-            : content;
+        preview = content.isEmpty ? 'No messages yet' : content;
     }
 
-    final avatarUrl =
-        otherUser?['avatar_url']?.toString();
+    final avatarUrl = otherUser?['avatar_url']?.toString();
 
     return Container(
-      margin: const EdgeInsets.only(
-        bottom: 10,
-      ),
+      margin: const EdgeInsets.only(bottom: 10),
 
       decoration: BoxDecoration(
         color: Colors.white,
@@ -747,26 +714,18 @@ class _HomePageState extends State<HomePage> {
                     shape: BoxShape.circle,
                   ),
 
-                  child: avatarUrl != null &&
-                          avatarUrl.isNotEmpty
+                  child: avatarUrl != null && avatarUrl.isNotEmpty
                       ? ClipOval(
                           child: Image.network(
                             avatarUrl,
                             fit: BoxFit.cover,
 
-                            errorBuilder:
-                                (context, error, stackTrace) {
-                              return Icon(
-                                icon,
-                                color: Colors.deepPurple,
-                              );
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(icon, color: Colors.deepPurple);
                             },
                           ),
                         )
-                      : Icon(
-                          icon,
-                          color: Colors.deepPurple,
-                        ),
+                      : Icon(icon, color: Colors.deepPurple),
                 ),
 
                 const SizedBox(width: 14),
@@ -774,8 +733,7 @@ class _HomePageState extends State<HomePage> {
                 // CHAT INFO
                 Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         title,
@@ -808,14 +766,9 @@ class _HomePageState extends State<HomePage> {
 
                 // TIME
                 Text(
-                  _formatChatTime(
-                    lastMessage?['created_at'],
-                  ),
+                  _formatChatTime(lastMessage?['created_at']),
 
-                  style: TextStyle(
-                    color: Colors.grey.shade500,
-                    fontSize: 11,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
                 ),
               ],
             ),
@@ -834,9 +787,7 @@ class _HomePageState extends State<HomePage> {
       return '';
     }
 
-    final date = DateTime.tryParse(
-      value.toString(),
-    );
+    final date = DateTime.tryParse(value.toString());
 
     if (date == null) {
       return '';
@@ -881,52 +832,40 @@ class _HomePageState extends State<HomePage> {
       ),
 
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
 
         children: [
           const Text(
             'Supabase Connection',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
 
           const SizedBox(height: 12),
 
           _InfoRow(
             label: 'Auth',
-            value: user != null
-                ? 'Connected ✓'
-                : 'Not connected',
+            value: user != null ? 'Connected ✓' : 'Not connected',
           ),
 
           const SizedBox(height: 8),
 
           _InfoRow(
             label: 'Profile',
-            value: _profile != null
-                ? 'Loaded ✓'
-                : 'Not found',
+            value: _profile != null ? 'Loaded ✓' : 'Not found',
           ),
 
           const SizedBox(height: 8),
 
           _InfoRow(
             label: 'Gamification',
-            value: _gamification != null
-                ? 'Loaded ✓'
-                : 'Not found',
+            value: _gamification != null ? 'Loaded ✓' : 'Not found',
           ),
 
           const SizedBox(height: 8),
 
           _InfoRow(
             label: 'Pet',
-            value: _pet != null
-                ? 'Loaded ✓'
-                : 'Not assigned',
+            value: _pet != null ? 'Loaded ✓' : 'Not assigned',
           ),
         ],
       ),
@@ -943,8 +882,7 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(24),
 
         child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
 
           children: [
             const Icon(
@@ -957,10 +895,7 @@ class _HomePageState extends State<HomePage> {
 
             const Text(
               'Gagal mengambil data Home',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 8),
@@ -968,10 +903,7 @@ class _HomePageState extends State<HomePage> {
             Text(
               _errorMessage ?? 'Unknown error',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
 
             const SizedBox(height: 20),
@@ -987,119 +919,101 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ============================================================
-  // COMMUNITY SECTION 
+  // COMMUNITY SECTION
   // ============================================================
 
-    Widget _buildCommunity() {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Community',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              TextButton(
-                onPressed: () {
-                  // Nanti menuju CommunityPage
-                },
-                child: const Text('See all'),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 10),
-
-          if (_recentForums.isEmpty)
-            _buildEmptyForum()
-          else
-            ..._recentForums.map(
-              (forum) => _buildForumItem(forum),
-            ),
-        ],
-      );
-    }
-
-    // ============================================================
-    // EMPTY FORUM
-    // ============================================================
-
-    Widget _buildEmptyForum() {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-        ),
-
-        child: Column(
+  Widget _buildCommunity() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Container(
-              width: 58,
-              height: 58,
-
-              decoration: BoxDecoration(
-                color: Colors.deepPurple.shade50,
-                shape: BoxShape.circle,
-              ),
-
-              child: const Icon(
-                Icons.forum_outlined,
-                color: Colors.deepPurple,
-                size: 28,
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
             const Text(
-              'No community posts yet',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+              'Community',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
-            const SizedBox(height: 5),
-
-            Text(
-              'Be the first to share something with the community.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 13,
-              ),
+            TextButton(
+              onPressed: () {
+                // Nanti menuju CommunityPage
+              },
+              child: const Text('See all'),
             ),
           ],
         ),
-      );
-    }
 
-  Widget _buildForumItem(
-    Map<String, dynamic> forum,
-  ) {
-    final title =
-        forum['title']?.toString() ?? 'Untitled';
+        const SizedBox(height: 10),
 
-    final content =
-        forum['content']?.toString() ?? '';
+        if (_recentForums.isEmpty)
+          _buildEmptyForum()
+        else
+          ..._recentForums.map((forum) => _buildForumItem(forum)),
+      ],
+    );
+  }
 
-    final likes =
-        forum['like_count'] ?? 0;
+  // ============================================================
+  // EMPTY FORUM
+  // ============================================================
 
-    final dislikes =
-        forum['dislike_count'] ?? 0;
+  Widget _buildEmptyForum() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
 
-    final replies =
-        forum['reply_count'] ?? 0;
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+      ),
+
+      child: Column(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+
+            decoration: BoxDecoration(
+              color: Colors.deepPurple.shade50,
+              shape: BoxShape.circle,
+            ),
+
+            child: const Icon(
+              Icons.forum_outlined,
+              color: Colors.deepPurple,
+              size: 28,
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          const Text(
+            'No community posts yet',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+
+          const SizedBox(height: 5),
+
+          Text(
+            'Be the first to share something with the community.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildForumItem(Map<String, dynamic> forum) {
+    final title = forum['title']?.toString() ?? 'Untitled';
+
+    final content = forum['content']?.toString() ?? '';
+
+    final likes = forum['like_count'] ?? 0;
+
+    final dislikes = forum['dislike_count'] ?? 0;
+
+    final replies = forum['reply_count'] ?? 0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1131,8 +1045,7 @@ class _HomePageState extends State<HomePage> {
             padding: const EdgeInsets.all(16),
 
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
 
               children: [
                 Row(
@@ -1145,8 +1058,7 @@ class _HomePageState extends State<HomePage> {
 
                       decoration: BoxDecoration(
                         color: Colors.deepPurple.shade50,
-                        borderRadius:
-                            BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(20),
                       ),
 
                       child: const Text(
@@ -1162,9 +1074,7 @@ class _HomePageState extends State<HomePage> {
                     const Spacer(),
 
                     Text(
-                      _formatChatTime(
-                        forum['created_at'],
-                      ),
+                      _formatChatTime(forum['created_at']),
                       style: TextStyle(
                         color: Colors.grey.shade500,
                         fontSize: 10,
@@ -1194,10 +1104,7 @@ class _HomePageState extends State<HomePage> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
 
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                   ),
                 ],
 
@@ -1215,9 +1122,7 @@ class _HomePageState extends State<HomePage> {
 
                     Text(
                       likes.toString(),
-                      style: const TextStyle(
-                        fontSize: 11,
-                      ),
+                      style: const TextStyle(fontSize: 11),
                     ),
 
                     const SizedBox(width: 14),
@@ -1232,9 +1137,7 @@ class _HomePageState extends State<HomePage> {
 
                     Text(
                       dislikes.toString(),
-                      style: const TextStyle(
-                        fontSize: 11,
-                      ),
+                      style: const TextStyle(fontSize: 11),
                     ),
 
                     const SizedBox(width: 14),
@@ -1249,9 +1152,7 @@ class _HomePageState extends State<HomePage> {
 
                     Text(
                       '$replies replies',
-                      style: const TextStyle(
-                        fontSize: 11,
-                      ),
+                      style: const TextStyle(fontSize: 11),
                     ),
                   ],
                 ),
@@ -1262,7 +1163,6 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-
 }
 
 // ============================================================
@@ -1283,10 +1183,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        vertical: 18,
-        horizontal: 10,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
 
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1295,30 +1192,20 @@ class _StatCard extends StatelessWidget {
 
       child: Column(
         children: [
-          Icon(
-            icon,
-            color: Colors.deepPurple,
-            size: 24,
-          ),
+          Icon(icon, color: Colors.deepPurple, size: 24),
 
           const SizedBox(height: 8),
 
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
 
           const SizedBox(height: 2),
 
           Text(
             title,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 11,
-            ),
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
           ),
         ],
       ),
@@ -1334,10 +1221,7 @@ class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
 
-  const _InfoRow({
-    required this.label,
-    required this.value,
-  });
+  const _InfoRow({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -1347,20 +1231,14 @@ class _InfoRow extends StatelessWidget {
           width: 110,
           child: Text(
             label,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
           ),
         ),
 
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
-              fontWeight: FontWeight.w500,
-              fontSize: 13,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
           ),
         ),
       ],

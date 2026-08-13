@@ -52,6 +52,7 @@ CREATE TABLE public.pets (
   image_url text,
   max_level integer NOT NULL DEFAULT 1,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  min_streak integer NOT NULL DEFAULT 0,
   CONSTRAINT pets_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.user_gamification (
@@ -65,6 +66,8 @@ CREATE TABLE public.user_gamification (
   pet_level integer NOT NULL DEFAULT 1,
   last_streak_date date,
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  ai_week_started_at date,
+  ai_weekly_capacity integer NOT NULL DEFAULT 100,
   CONSTRAINT user_gamification_pkey PRIMARY KEY (user_id),
   CONSTRAINT fk_user_gamification_user FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT fk_user_gamification_pet FOREIGN KEY (pet_id) REFERENCES public.pets(id)
@@ -425,6 +428,11 @@ CREATE TABLE public.forum_attachments (
   file_id bigint NOT NULL,
   uploaded_by uuid NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  curation_status text NOT NULL DEFAULT 'PENDING'::text CHECK (curation_status = ANY (ARRAY['PENDING'::text, 'PASSED'::text, 'FAILED'::text])),
+  curation_feedback text,
+  relevance_score numeric CHECK (relevance_score IS NULL OR relevance_score >= 0::numeric AND relevance_score <= 100::numeric),
+  relevance_label text,
+  reviewed_at timestamp with time zone,
   CONSTRAINT forum_attachments_pkey PRIMARY KEY (id),
   CONSTRAINT fk_forum_attachments_post FOREIGN KEY (post_id) REFERENCES public.forum_posts(id),
   CONSTRAINT fk_forum_attachments_reply FOREIGN KEY (reply_id) REFERENCES public.forum_replies(id),
@@ -494,6 +502,8 @@ CREATE TABLE public.conversations (
   title text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  description text,
+  avatar_url text,
   CONSTRAINT conversations_pkey PRIMARY KEY (id),
   CONSTRAINT fk_conversations_group FOREIGN KEY (group_id) REFERENCES public.groups(id),
   CONSTRAINT fk_conversations_created_by FOREIGN KEY (created_by) REFERENCES public.users(id)
@@ -694,4 +704,22 @@ CREATE TABLE public.search_history (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT search_history_pkey PRIMARY KEY (id),
   CONSTRAINT fk_search_history_user FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.user_presence (
+  user_id uuid NOT NULL,
+  is_online boolean NOT NULL DEFAULT false,
+  last_seen_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_presence_pkey PRIMARY KEY (user_id),
+  CONSTRAINT user_presence_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.conversation_member_settings (
+  conversation_id bigint NOT NULL,
+  user_id uuid NOT NULL,
+  nickname text,
+  is_pinned boolean NOT NULL DEFAULT false,
+  pinned_at timestamp with time zone,
+  CONSTRAINT conversation_member_settings_pkey PRIMARY KEY (conversation_id, user_id),
+  CONSTRAINT conversation_member_settings_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id),
+  CONSTRAINT conversation_member_settings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:file_picker/file_picker.dart';
+import 'attachment_preview.dart';
 import 'db_helper.dart';
+import 'library_attachment_picker.dart';
 
 class CommunityChatPage extends StatefulWidget {
   final dynamic conversationId;
@@ -24,12 +27,14 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   final DbHelper _dbHelper = DbHelper();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  Timer? _presenceTimer;
 
   final Map<String, String> _userCache = {};
   final Set<String> _loadingUserIds = {};
   bool _isUploading = false;
   String _roomSubtitle = '';
   bool _isPinned = false;
+  int? _highestOtherReadMessageId;
   late String _roomTitle;
 
   int get _convIdInt => int.tryParse(widget.conversationId.toString()) ?? 0;
@@ -37,6 +42,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
 
   @override
   void dispose() {
+    _presenceTimer?.cancel();
     _dbHelper.setMyPresence(false);
     _messageController.dispose();
     _scrollController.dispose();
@@ -49,6 +55,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
     _roomTitle = widget.title;
     _dbHelper.setMyPresence(true);
     _loadRoomInfo();
+    _presenceTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      _dbHelper.setMyPresence(true);
+      _loadRoomInfo();
+    });
   }
 
   Future<void> _loadRoomInfo() async {
@@ -56,7 +66,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
       final members = await _supabase
           .from('conversation_members')
           .select(
-            'user_id, user_presence(is_online, last_seen_at), conversation_member_settings(is_pinned)',
+            'user_id, last_read_message_id, user_presence(is_online, last_seen_at), conversation_member_settings(is_pinned)',
           )
           .eq('conversation_id', _convIdInt);
       final other = members
@@ -69,7 +79,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
           .toList();
       if (!mounted) return;
       if (other.length == 1) {
-        final presence = other.first['user_presence'];
+        final rawPresence = other.first['user_presence'];
+        final presence = rawPresence is List && rawPresence.isNotEmpty
+            ? rawPresence.first
+            : rawPresence;
         final online = presence is Map && presence['is_online'] == true;
         final seen = presence is Map
             ? DateTime.tryParse(presence['last_seen_at']?.toString() ?? '')
@@ -82,9 +95,21 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
       } else {
         _roomSubtitle = '${members.length} anggota';
       }
-      final ownSettings = own.isEmpty
+      final otherReads = other
+          .map(
+            (member) =>
+                int.tryParse(member['last_read_message_id']?.toString() ?? ''),
+          )
+          .whereType<int>();
+      _highestOtherReadMessageId = otherReads.isEmpty
+          ? null
+          : otherReads.reduce((a, b) => a > b ? a : b);
+      final rawOwnSettings = own.isEmpty
           ? null
           : own.first['conversation_member_settings'];
+      final ownSettings = rawOwnSettings is List && rawOwnSettings.isNotEmpty
+          ? rawOwnSettings.first
+          : rawOwnSettings;
       _isPinned = ownSettings is Map && ownSettings['is_pinned'] == true;
       setState(() {});
     } catch (_) {}
@@ -151,7 +176,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   }
 
   Future<void> _renameGroup() async {
-    final controller = TextEditingController(text: widget.title);
+    final controller = TextEditingController(text: _roomTitle);
     final saved = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -243,63 +268,22 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
     }
   }
 
-  /// Memilih dan mengunggah file/gambar (Kompatibel dengan file_picker: ^3.0.4)
-  Future<void> _pickAndSendFile({bool isImageOnly = false}) async {
-    // 1. Cek jika sedang proses upload/pilih file, cegah klik ganda
+  /// Lampiran chat selalu diambil dari Library agar file dan preview konsisten.
+  Future<void> _pickAndSendFile() async {
     if (_isUploading) return;
 
-    // 2. Langsung set status uploading ke true SEBELUM membuka file picker
     setState(() => _isUploading = true);
 
-    const maxFileSizeInBytes = 5 * 1024 * 1024; // Limit 5 MB
-
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: isImageOnly ? FileType.image : FileType.any,
-        withData: true,
-      );
+      final attachment = await pickLibraryAttachment(context);
+      if (attachment == null) return;
+      final messageType = attachment.isImage ? 'IMAGE' : 'FILE';
 
-      if (result == null || result.files.isEmpty) {
-        return;
-      }
-
-      final file = result.files.single;
-      if (file.bytes == null) return;
-
-      // Cek ukuran file
-      if (file.size > maxFileSizeInBytes) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Ukuran file terlalu besar! Maksimal 5 MB.'),
-            ),
-          );
-        }
-        return;
-      }
-
-      final ext = file.extension?.toLowerCase() ?? '';
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
-      final path = 'chat_$_convIdInt/$fileName';
-
-      // Upload ke Supabase Storage
-      await _supabase.storage
-          .from('chat-files')
-          .uploadBinary(path, file.bytes!);
-
-      // Ambil URL Publik
-      final publicUrl = _supabase.storage.from('chat-files').getPublicUrl(path);
-
-      // Tentukan tipe pesan
-      final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(ext);
-      final messageType = isImage ? 'IMAGE' : 'FILE';
-
-      // Simpan pesan ke database
       await _supabase.from('messages').insert({
         'conversation_id': _convIdInt,
         'sender_id': currentUserId,
         'message_type': messageType,
-        'content': publicUrl,
+        'content': attachment.locator,
         'status': 'SENT',
       });
 
@@ -316,7 +300,6 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
         ).showSnackBar(SnackBar(content: Text('Gagal mengunggah file: $e')));
       }
     } finally {
-      // 3. Reset kembali status uploading jika selesai / batal / error
       if (mounted) setState(() => _isUploading = false);
     }
   }
@@ -333,22 +316,17 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
           child: Wrap(
             children: [
               ListTile(
-                leading: const Icon(Icons.image, color: Colors.blue),
-                title: const Text('Kirim Gambar'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickAndSendFile(isImageOnly: true);
-                },
-              ),
-              ListTile(
                 leading: const Icon(
-                  Icons.insert_drive_file,
-                  color: Colors.orange,
+                  Icons.folder_copy_outlined,
+                  color: Color(0xFF6C63FF),
                 ),
-                title: const Text('Kirim File / Dokumen'),
+                title: const Text('Kirim dari Library'),
+                subtitle: const Text(
+                  'Gambar, PDF, atau dokumen yang sudah disimpan',
+                ),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickAndSendFile(isImageOnly: false);
+                  _pickAndSendFile();
                 },
               ),
             ],
@@ -428,11 +406,25 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                           final item = media
                               .where((item) => item['message_type'] == 'IMAGE')
                               .elementAt(index);
-                          return Image.network(
-                            item['content']?.toString() ?? '',
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                const Icon(Icons.broken_image),
+                          final url = item['content']?.toString() ?? '';
+                          return InkWell(
+                            onTap: () =>
+                                openAttachmentPreview(context, url: url),
+                            child: FutureBuilder<String>(
+                              future: resolveAttachmentUrl(url),
+                              builder: (_, snapshot) => snapshot.hasData
+                                  ? Image.network(
+                                      snapshot.data!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.broken_image),
+                                    )
+                                  : const Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                            ),
                           );
                         },
                       ),
@@ -443,10 +435,8 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                               (item) => ListTile(
                                 leading: const Icon(Icons.description_outlined),
                                 title: Text(
-                                  Uri.decodeComponent(
-                                    (item['content']?.toString() ?? '')
-                                        .split('/')
-                                        .last,
+                                  attachmentName(
+                                    item['content']?.toString() ?? '',
                                   ),
                                 ),
                                 subtitle: Text(
@@ -456,6 +446,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                         ) ??
                                         DateTime.now(),
                                   ),
+                                ),
+                                onTap: () => openAttachmentPreview(
+                                  context,
+                                  url: item['content']?.toString() ?? '',
                                 ),
                               ),
                             )
@@ -711,52 +705,8 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
 
   /// Tampilan konten pesan berdasarkan tipe (TEXT, IMAGE, FILE)
   Widget _buildMessageContent(String content, String type, bool isMe) {
-    if (type == 'IMAGE') {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          content,
-          width: 200,
-          fit: BoxFit.cover,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return const SizedBox(
-              width: 200,
-              height: 150,
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            );
-          },
-          errorBuilder: (_, __, ___) => const Text('Gagal memuat gambar.'),
-        ),
-      );
-    }
-
-    if (type == 'FILE') {
-      final fileName = Uri.decodeComponent(
-        content.split('/').last.split('?').first,
-      );
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.insert_drive_file,
-            color: isMe ? Colors.white : const Color(0xFF6C63FF),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              fileName,
-              style: TextStyle(
-                color: isMe ? Colors.white : Colors.black87,
-                decoration: TextDecoration.underline,
-                fontSize: 14,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      );
+    if (type == 'IMAGE' || type == 'FILE') {
+      return AttachmentPreviewTile(url: content, dark: isMe);
     }
 
     return Text(
@@ -943,7 +893,12 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                 fontSize: 10,
                               ),
                             ),
-                            if (isMe)
+                            if (isMe &&
+                                _highestOtherReadMessageId != null &&
+                                int.tryParse(msg['id']?.toString() ?? '') !=
+                                    null &&
+                                int.parse(msg['id'].toString()) <=
+                                    _highestOtherReadMessageId!)
                               const Padding(
                                 padding: EdgeInsets.only(top: 2),
                                 child: Icon(

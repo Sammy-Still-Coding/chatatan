@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'attachment_preview.dart';
 import 'db_helper.dart';
 
 class ForumDetailPage extends StatefulWidget {
@@ -68,7 +69,7 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
         users:user_id (username, full_name, avatar_url),
         forum_attachments (
           id, uploaded_by, curation_status, relevance_label,
-          files (original_name, extension, mime_type, file_size)
+          files (original_name, extension, mime_type, file_size, storage_path)
         ),
         parent:parent_reply_id (
           users:user_id (username, full_name)
@@ -388,6 +389,20 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
             margin: const EdgeInsets.only(bottom: 8),
             color: const Color(0xFFF8F8FF),
             child: ListTile(
+              onTap: file['storage_path'] == null
+                  ? null
+                  : () async {
+                      final url = await _dbHelper.getLibraryFileUrl(
+                        file['storage_path'].toString(),
+                      );
+                      if (mounted) {
+                        await openAttachmentPreview(
+                          context,
+                          url: url,
+                          name: file['original_name']?.toString(),
+                        );
+                      }
+                    },
               leading: const Icon(
                 Icons.description_outlined,
                 color: Color(0xFF6C5CE7),
@@ -917,14 +932,37 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                             ),
                                             const SizedBox(width: 8),
                                             Expanded(
-                                              child: Text(
-                                                file['original_name']
-                                                        ?.toString() ??
-                                                    'Lampiran balasan',
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
+                                              child: InkWell(
+                                                onTap:
+                                                    file['storage_path'] == null
+                                                    ? null
+                                                    : () async {
+                                                        final url = await _dbHelper
+                                                            .getLibraryFileUrl(
+                                                              file['storage_path']
+                                                                  .toString(),
+                                                            );
+                                                        if (mounted)
+                                                          await openAttachmentPreview(
+                                                            context,
+                                                            url: url,
+                                                            name:
+                                                                file['original_name']
+                                                                    ?.toString(),
+                                                          );
+                                                      },
+                                                child: Text(
+                                                  file['original_name']
+                                                          ?.toString() ??
+                                                      'Lampiran balasan',
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    decoration: TextDecoration
+                                                        .underline,
+                                                  ),
                                                 ),
                                               ),
                                             ),

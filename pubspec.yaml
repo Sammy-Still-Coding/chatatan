@@ -40,6 +40,10 @@ dependencies:
   file_picker: ^8.1.2
   uuid: ^4.5.2
   syncfusion_flutter_pdfviewer: ^33.2.13
+  syncfusion_flutter_pdf: ^33.2.13
+  flutter_markdown_plus: ^1.0.12
+  archive: ^4.0.7
+  pdfx: ^2.9.2
   url_launcher: ^6.3.2
   http: ^1.6.0
   open_filex: ^4.7.0

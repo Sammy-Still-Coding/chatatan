@@ -170,8 +170,8 @@ class _MainNavigationState extends State<MainNavigation> {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
 
-                width: isSelected ? 62 : 58,
-                height: isSelected ? 62 : 58,
+                width: isSelected ? 54 : 50,
+                height: isSelected ? 54 : 50,
 
                 decoration: BoxDecoration(
                   color: Colors.deepPurple,
@@ -195,13 +195,13 @@ class _MainNavigationState extends State<MainNavigation> {
                 ),
               ),
 
-              const SizedBox(height: 2),
+              const SizedBox(height: 0),
 
               Text(
                 'Scan',
 
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: FontWeight.w600,
                   color: isSelected ? Colors.deepPurple : Colors.grey.shade500,
                 ),

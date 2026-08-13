@@ -215,6 +215,18 @@ class DbHelper {
     return response;
   }
 
+  Future<List<Map<String, dynamic>>> getPets() async =>
+      List<Map<String, dynamic>>.from(
+        await _client.from('pets').select().order('id'),
+      );
+
+  Future<void> choosePet(int petId) async {
+    await _client.rpc('choose_pet', params: {'p_pet_id': petId});
+  }
+
+  Future<Map<String, dynamic>> claimLearningStreak() async =>
+      Map<String, dynamic>.from(await _client.rpc('claim_learning_streak'));
+
   // ============================================================
   // HOME DATA
   // ============================================================

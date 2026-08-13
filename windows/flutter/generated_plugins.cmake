@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   file_selector_windows
+  pdfx
   public_file_saver
   syncfusion_pdfviewer_windows
   url_launcher_windows

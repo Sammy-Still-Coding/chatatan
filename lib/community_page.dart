@@ -692,8 +692,9 @@ class _CommunityPageState extends State<CommunityPage> {
                   lastMessage != null && lastMessage['created_at'] != null
                   ? DateTime.tryParse(lastMessage['created_at'])
                   : null;
-              final timeStr = createdAt != null
-                  ? "${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}"
+              final localCreatedAt = createdAt?.toLocal();
+              final timeStr = localCreatedAt != null
+                  ? "${localCreatedAt.hour.toString().padLeft(2, '0')}:${localCreatedAt.minute.toString().padLeft(2, '0')}"
                   : '';
 
               return _buildChatItem(
