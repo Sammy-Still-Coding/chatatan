@@ -4,12 +4,232 @@ import 'community_chat_page.dart';
 import 'create_forum_modal.dart';
 import 'forum_tab.dart';
 import 'ai_chat_page.dart';
+import 'forum_detail_page.dart';
 
 class CommunityPage extends StatefulWidget {
   const CommunityPage({super.key});
 
   @override
   State<CommunityPage> createState() => _CommunityPageState();
+}
+
+class _UserSearchSheet extends StatefulWidget {
+  const _UserSearchSheet({required this.onSelected});
+  final void Function(String userId, String username) onSelected;
+
+  @override
+  State<_UserSearchSheet> createState() => _UserSearchSheetState();
+}
+
+class _UserSearchSheetState extends State<_UserSearchSheet> {
+  final _db = DbHelper();
+  List<Map<String, dynamic>> _results = [];
+  bool _loading = false;
+  int _request = 0;
+
+  Future<void> _search(String value) async {
+    final request = ++_request;
+    if (value.trim().isEmpty) {
+      setState(() => _results = []);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final results = await _db.searchUsers(value);
+      if (mounted && request == _request) setState(() => _results = results);
+    } finally {
+      if (mounted && request == _request) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          20,
+          16,
+          MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * .65,
+          child: Column(
+            children: [
+              const Text(
+                'Cari Orang / Mulai Chat',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                autofocus: true,
+                onChanged: _search,
+                decoration: const InputDecoration(
+                  hintText: 'Ketik nama / username...',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _results.isEmpty
+                    ? const Center(
+                        child: Text('Ketik nama teman untuk mencari.'),
+                      )
+                    : ListView.builder(
+                        itemCount: _results.length,
+                        itemBuilder: (_, index) {
+                          final user = _results[index];
+                          final name = user['username']?.toString() ?? 'User';
+                          return ListTile(
+                            leading: CircleAvatar(
+                              child: Text(name.substring(0, 1).toUpperCase()),
+                            ),
+                            title: Text(name),
+                            subtitle: const Text('Mulai chat pribadi'),
+                            onTap: () {
+                              Navigator.pop(context);
+                              widget.onSelected(user['id'].toString(), name);
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ForumSearchSheet extends StatefulWidget {
+  const _ForumSearchSheet();
+
+  @override
+  State<_ForumSearchSheet> createState() => _ForumSearchSheetState();
+}
+
+class _ForumSearchSheetState extends State<_ForumSearchSheet> {
+  final _db = DbHelper();
+  List<Map<String, dynamic>> _results = [];
+  bool _loading = false;
+  int _request = 0;
+
+  Future<void> _search(String value) async {
+    final request = ++_request;
+    if (value.trim().isEmpty) {
+      setState(() => _results = []);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final results = await _db.searchForumPosts(value);
+      if (mounted && request == _request) setState(() => _results = results);
+    } finally {
+      if (mounted && request == _request) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          20,
+          16,
+          MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * .65,
+          child: Column(
+            children: [
+              const Text(
+                'Cari diskusi forum',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                autofocus: true,
+                onChanged: _search,
+                decoration: const InputDecoration(
+                  hintText: 'Cari judul atau isi diskusi...',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _results.isEmpty
+                    ? const Center(child: Text('Masukkan kata kunci forum.'))
+                    : ListView.builder(
+                        itemCount: _results.length,
+                        itemBuilder: (_, index) {
+                          final post = _results[index];
+                          return ListTile(
+                            title: Text(post['title']?.toString() ?? 'Diskusi'),
+                            subtitle: Text(
+                              post['content']?.toString() ?? '',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onTap: () {
+                              final id = int.tryParse(post['id'].toString());
+                              if (id == null) return;
+                              Navigator.pop(context);
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ForumDetailPage(postId: id),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnreadBadge extends StatelessWidget {
+  const _UnreadBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count <= 0) return const SizedBox.shrink();
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: Container(
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: Color(0xFF6C63FF),
+          shape: BoxShape.circle,
+        ),
+        child: FittedBox(
+          child: Text(
+            count > 99 ? '99+' : '$count',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _CommunityPageState extends State<CommunityPage> {
@@ -19,6 +239,8 @@ class _CommunityPageState extends State<CommunityPage> {
   int _selectedTabIndex = 1;
   bool _isLoading = false;
   List<Map<String, dynamic>> _recentChats = [];
+  List<Map<String, dynamic>> _groups = [];
+  Map<int, int> _unreadCounts = {};
 
   @override
   void initState() {
@@ -30,9 +252,25 @@ class _CommunityPageState extends State<CommunityPage> {
   Future<void> _loadRecentChats() async {
     setState(() => _isLoading = true);
     try {
+      // Unread badges are optional until the matching SQL migration has been
+      // run. A missing RPC must never hide a user's existing conversations.
       final chats = await _dbHelper.getRecentChats(limit: 20);
+      List<Map<String, dynamic>> groups = [];
+      try {
+        groups = await _dbHelper.getGroupConversations();
+      } catch (_) {
+        // Chat data still remains available if a group-specific policy fails.
+      }
+      Map<int, int> unreadCounts = {};
+      try {
+        unreadCounts = await _dbHelper.getConversationUnreadCounts();
+      } catch (_) {
+        // The normal chat and group lists remain usable without badges.
+      }
       setState(() {
         _recentChats = chats;
+        _groups = groups;
+        _unreadCounts = unreadCounts;
       });
     } catch (e) {
       if (mounted) {
@@ -53,138 +291,22 @@ class _CommunityPageState extends State<CommunityPage> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) {
-        List<Map<String, dynamic>> searchResults = [];
-        bool isSearching = false;
+      builder: (_) => _UserSearchSheet(
+        onSelected: (userId, username) {
+          _openPrivateChat(userId, username);
+        },
+      ),
+    );
+  }
 
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-                top: 20,
-                left: 16,
-                right: 16,
-              ),
-              height: MediaQuery.of(context).size.height * 0.65,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Cari Orang / Mulai Chat',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      hintText: 'Ketik nama / username...',
-                      prefixIcon: const Icon(
-                        Icons.search,
-                        color: Color(0xFF6C63FF),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                    onChanged: (val) async {
-                      if (val.trim().isEmpty) {
-                        setModalState(() => searchResults = []);
-                        return;
-                      }
-                      setModalState(() => isSearching = true);
-                      final results = await _dbHelper.searchUsers(val);
-                      setModalState(() {
-                        searchResults = results;
-                        isSearching = false;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  if (isSearching)
-                    const Center(child: CircularProgressIndicator())
-                  else if (searchResults.isEmpty)
-                    const Expanded(
-                      child: Center(
-                        child: Text(
-                          'Ketik nama teman untuk mencari.',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ),
-                    )
-                  else
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: searchResults.length,
-                        itemBuilder: (context, index) {
-                          final targetUser = searchResults[index];
-                          final username = targetUser['username'] ?? 'User';
-                          final avatarUrl = targetUser['avatar_url'];
-
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 4,
-                            ),
-                            leading: CircleAvatar(
-                              radius: 22,
-                              backgroundColor: _getAvatarColor(username),
-                              backgroundImage: avatarUrl != null
-                                  ? NetworkImage(avatarUrl)
-                                  : null,
-                              child: avatarUrl == null
-                                  ? Text(
-                                      _getInitials(username),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                            title: Text(
-                              username,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: const Text(
-                              'Klik untuk mulai chat pribadi',
-                            ),
-                            trailing: const Icon(
-                              Icons.chat_bubble_outline_rounded,
-                              color: Color(0xFF6C63FF),
-                            ),
-                            onTap: () {
-                              Navigator.pop(context); // Tutup modal
-                              _openPrivateChat(targetUser['id'], username);
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+  void _showForumSearch() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const _ForumSearchSheet(),
     );
   }
 
@@ -468,7 +590,9 @@ class _CommunityPageState extends State<CommunityPage> {
                   // Tombol Search
                   _buildIconButton(
                     icon: Icons.search,
-                    onTap: _showSearchUserModal,
+                    onTap: _selectedTabIndex == 1
+                        ? _showForumSearch
+                        : _showSearchUserModal,
                   ),
                   const SizedBox(width: 8),
                   // Tombol Plus (+) untuk cari/buat chat baru
@@ -529,67 +653,70 @@ class _CommunityPageState extends State<CommunityPage> {
   }
 
   Widget _buildGroupsList() {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _dbHelper.getGroupConversations(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_groups.isEmpty) {
+      return const Center(
+        child: Text(
+          'Belum ada grup.\nTekan tombol + untuk membuat grup baru!',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
 
-        final groups = snapshot.data ?? [];
+    return RefreshIndicator(
+      onRefresh: _loadRecentChats,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: _groups.length,
+        itemBuilder: (context, index) {
+          final group = _groups[index];
+          final rawTitle = group['title']?.toString().trim() ?? '';
+          final title = rawTitle.isEmpty
+              ? 'Grup #${group['id'] ?? index + 1}'
+              : rawTitle;
+          final memberCount = group['member_count'] ?? 'Anggota';
 
-        if (groups.isEmpty) {
-          return const Center(
-            child: Text(
-              'Belum ada grup.\nTekan tombol + untuk membuat grup baru!',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
+          return Card(
+            elevation: 0,
+            margin: const EdgeInsets.only(bottom: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: const Color(0xFFEEECFF),
+                child: const Icon(Icons.groups, color: Color(0xFF6C63FF)),
+              ),
+              title: Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                memberCount == 'Anggota' ? 'Grup chat' : '$memberCount members',
+              ),
+              trailing: _UnreadBadge(
+                count:
+                    _unreadCounts[int.tryParse(group['id'].toString()) ?? -1] ??
+                    0,
+              ),
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CommunityChatPage(
+                      conversationId: group['id'],
+                      title: title,
+                      isGroup: true,
+                    ),
+                  ),
+                );
+                if (mounted) _loadRecentChats();
+              },
             ),
           );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          itemCount: groups.length,
-          itemBuilder: (context, index) {
-            final group = groups[index];
-            final memberCount =
-                (group['conversation_members'] as List?)?.first['count'] ?? 1;
-
-            return Card(
-              elevation: 0,
-              margin: const EdgeInsets.only(bottom: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFFEEECFF),
-                  child: const Icon(Icons.groups, color: Color(0xFF6C63FF)),
-                ),
-                title: Text(
-                  group['title'] ?? 'Grup',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text('$memberCount members'),
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CommunityChatPage(
-                        conversationId: group['id'],
-                        title: group['title'] ?? 'Grup',
-                        isGroup: true,
-                      ),
-                    ),
-                  );
-                  if (mounted) setState(() {});
-                },
-              ),
-            );
-          },
-        );
-      },
+        },
+      ),
     );
   }
 
@@ -703,6 +830,10 @@ class _CommunityPageState extends State<CommunityPage> {
                 timeStr: timeStr,
                 avatarUrl: avatarUrl,
                 isPinned: settings['is_pinned'] == true,
+                unreadCount:
+                    _unreadCounts[int.tryParse(conversation['id'].toString()) ??
+                        -1] ??
+                    0,
                 onTap: () async {
                   await Navigator.push(
                     context,
@@ -807,6 +938,7 @@ class _CommunityPageState extends State<CommunityPage> {
     required String timeStr,
     String? avatarUrl,
     bool isPinned = false,
+    int unreadCount = 0,
     required VoidCallback onTap,
   }) {
     return Card(
@@ -852,8 +984,18 @@ class _CommunityPageState extends State<CommunityPage> {
               ),
             Text(
               timeStr,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 12,
+                color: unreadCount > 0 ? const Color(0xFF6C63FF) : Colors.grey,
+                fontWeight: unreadCount > 0
+                    ? FontWeight.bold
+                    : FontWeight.normal,
+              ),
             ),
+            if (unreadCount > 0) ...[
+              const SizedBox(height: 4),
+              _UnreadBadge(count: unreadCount),
+            ],
           ],
         ),
         onTap: onTap,

@@ -1367,6 +1367,18 @@ class DbHelper {
     return List<Map<String, dynamic>>.from(response);
   }
 
+  Future<List<Map<String, dynamic>>> searchForumPosts(String query) async {
+    final keyword = query.trim();
+    if (keyword.isEmpty) return [];
+    final response = await _client
+        .from('forum_posts')
+        .select('id, title, content, created_at')
+        .or('title.ilike.%$keyword%,content.ilike.%$keyword%')
+        .order('created_at', ascending: false)
+        .limit(30);
+    return List<Map<String, dynamic>>.from(response);
+  }
+
   /// 2. Ambil ID percakapan PRIVATE yang ada, atau buat baru jika belum pernah chat
   Future<int> getOrCreatePrivateConversation(String targetUserId) async {
     final user = currentUser;
@@ -1467,6 +1479,80 @@ class DbHelper {
         .update({'last_read_message_id': messageId})
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
+    try {
+      await _client
+          .from('notifications')
+          .update({
+            'is_read': true,
+            'read_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('user_id', user.id)
+          .eq('entity_type', 'CONVERSATION')
+          .eq('entity_id', conversationId)
+          .eq('is_read', false);
+    } catch (_) {}
+  }
+
+  Future<Map<int, int>> getConversationUnreadCounts() async {
+    final user = currentUser;
+    if (user == null) return {};
+    final response = await _client.rpc('get_my_conversation_unreads');
+    final result = <int, int>{};
+    for (final row in response as List) {
+      final id = int.tryParse(row['conversation_id'].toString());
+      final count = int.tryParse(row['unread_count'].toString()) ?? 0;
+      if (id != null && count > 0) result[id] = count;
+    }
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> getNotifications({int limit = 100}) async {
+    final user = currentUser;
+    if (user == null) return [];
+    final response = await _client
+        .from('notifications')
+        .select()
+        .eq('user_id', user.id)
+        .order('created_at', ascending: false)
+        .limit(limit);
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  Future<int> getUnreadNotificationCount() async {
+    final user = currentUser;
+    if (user == null) return 0;
+    final response = await _client
+        .from('notifications')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+    return response.length;
+  }
+
+  Future<void> markNotificationRead(int notificationId) async {
+    final user = currentUser;
+    if (user == null) return;
+    await _client
+        .from('notifications')
+        .update({
+          'is_read': true,
+          'read_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', notificationId)
+        .eq('user_id', user.id);
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    final user = currentUser;
+    if (user == null) return;
+    await _client
+        .from('notifications')
+        .update({
+          'is_read': true,
+          'read_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
   }
 
   Future<void> setConversationPinned(int conversationId, bool pinned) async {
@@ -1645,6 +1731,33 @@ class DbHelper {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> getConversationMembers(
+    int conversationId,
+  ) async {
+    final memberships = await _client
+        .from('conversation_members')
+        .select('user_id, role, joined_at')
+        .eq('conversation_id', conversationId)
+        .order('joined_at');
+    final ids = memberships
+        .map((row) => row['user_id']?.toString())
+        .whereType<String>()
+        .toList();
+    if (ids.isEmpty) return [];
+    final users = await _client
+        .from('users')
+        .select('id, username, full_name, avatar_url')
+        .inFilter('id', ids);
+    final byId = <String, Map<String, dynamic>>{
+      for (final user in users)
+        user['id'].toString(): Map<String, dynamic>.from(user),
+    };
+    return memberships.map<Map<String, dynamic>>((member) {
+      final id = member['user_id'].toString();
+      return {...Map<String, dynamic>.from(member), ...(byId[id] ?? {})};
+    }).toList();
+  }
+
   // ------------------------------------------------------------
   // UPDATE AVATAR / PROFILE PICTURE
   // ------------------------------------------------------------
@@ -1738,6 +1851,7 @@ class DbHelper {
       return true;
     }
   }
+
   /// Mengambil semua postingan forum yang di-bookmark oleh pengguna aktif
   Future<List<Map<String, dynamic>>> getBookmarkedForumPosts() async {
     final user = currentUser;
@@ -1745,11 +1859,10 @@ class DbHelper {
 
     final response = await _client
         .from('forum_bookmarks')
-        .select('*, forum_posts!inner(*, users(*))')
+        .select(', forum_posts(, users(*))')
         .eq('user_id', user.id)
         .order('created_at', ascending: false);
 
     return List<Map<String, dynamic>>.from(response);
   }
-
 }

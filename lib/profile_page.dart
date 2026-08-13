@@ -5,6 +5,7 @@ import 'db_helper.dart';
 import 'privacy_security_page.dart';
 import 'login_page.dart';
 import 'save_page.dart';
+import 'notification_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -32,7 +33,10 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Wrap(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.photo_library_outlined, color: Color(0xFF5B6CFF)),
+                  leading: const Icon(
+                    Icons.photo_library_outlined,
+                    color: Color(0xFF5B6CFF),
+                  ),
                   title: const Text('Pilih dari Galeri'),
                   onTap: () {
                     Navigator.pop(context);
@@ -40,7 +44,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.camera_alt_outlined, color: Color(0xFF5B6CFF)),
+                  leading: const Icon(
+                    Icons.camera_alt_outlined,
+                    color: Color(0xFF5B6CFF),
+                  ),
                   title: const Text('Ambil Foto Kamera'),
                   onTap: () {
                     Navigator.pop(context);
@@ -87,7 +94,9 @@ class _ProfilePageState extends State<ProfilePage> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Gagal mengunggah foto profil. Periksa koneksi/storage policy.'),
+            content: Text(
+              'Gagal mengunggah foto profil. Periksa koneksi/storage policy.',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -112,7 +121,8 @@ class _ProfilePageState extends State<ProfilePage> {
         child: FutureBuilder<Map<String, dynamic>?>(
           future: _dbHelper.getFullProfileData(),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting && !_isUploadingAvatar) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !_isUploadingAvatar) {
               return const Center(child: CircularProgressIndicator());
             }
 
@@ -124,24 +134,45 @@ class _ProfilePageState extends State<ProfilePage> {
             final profile = data['profile'] ?? {};
             final gamification = data['gamification'] ?? {};
 
-            final name = profile['username'] ?? profile['full_name'] ?? 'Pengguna';
-            final university = profile['university'] ?? 'Universitas Bina Nusantara';
+            final name =
+                profile['username'] ?? profile['full_name'] ?? 'Pengguna';
+            final university =
+                profile['university'] ?? 'Universitas Bina Nusantara';
             final major = profile['major'] ?? 'Informatika';
             final avatarUrl = profile['avatar_url'] as String?;
 
-            final streak = gamification['current_streak'] ?? gamification['streak_count'] ?? gamification['streak'] ?? 0;
-            final tokens = gamification['token_balance'] ?? gamification['tokens'] ?? 0;
-            final rank = gamification['rank'] != null ? '#${gamification['rank']}' : '-';
+            final streak =
+                gamification['current_streak'] ??
+                gamification['streak_count'] ??
+                gamification['streak'] ??
+                0;
+            final tokens =
+                gamification['token_balance'] ?? gamification['tokens'] ?? 0;
+            final rank = gamification['rank'] != null
+                ? '#${gamification['rank']}'
+                : '-';
             final totalNotes = data['total_notes'] ?? 0;
             final discussions = data['total_discussions'] ?? 0;
-            final xpPoints = gamification['total_points'] ?? gamification['xp_points'] ?? gamification['xp'] ?? 0;
+            final xpPoints =
+                gamification['total_points'] ??
+                gamification['xp_points'] ??
+                gamification['xp'] ??
+                0;
 
             return SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeaderCard(name, university, major, avatarUrl, streak, tokens, rank),
+                  _buildHeaderCard(
+                    name,
+                    university,
+                    major,
+                    avatarUrl,
+                    streak,
+                    tokens,
+                    rank,
+                  ),
                   const SizedBox(height: 20),
 
                   _buildStatSummary(totalNotes, discussions, xpPoints),
@@ -240,17 +271,17 @@ class _ProfilePageState extends State<ProfilePage> {
                           child: CircularProgressIndicator(color: Colors.white),
                         )
                       : (avatarUrl == null || avatarUrl.isEmpty)
-                          ? Center(
-                              child: Text(
-                                _getInitials(name),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            )
-                          : null,
+                      ? Center(
+                          child: Text(
+                            _getInitials(name),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        )
+                      : null,
                 ),
                 Positioned(
                   right: 0,
@@ -261,10 +292,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       color: Colors.white,
                       shape: BoxShape.circle,
                       boxShadow: [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 4,
-                        ),
+                        BoxShadow(color: Colors.black12, blurRadius: 4),
                       ],
                     ),
                     child: const Icon(
@@ -375,10 +403,7 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: 2),
         Text(
           label,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.6),
-            fontSize: 10,
-          ),
+          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 10),
         ),
       ],
     );
@@ -388,15 +413,27 @@ class _ProfilePageState extends State<ProfilePage> {
     return Row(
       children: [
         Expanded(
-          child: _buildStatCard('$totalNotes', 'Total Notes', const Color(0xFF5B6CFF)),
+          child: _buildStatCard(
+            '$totalNotes',
+            'Total Notes',
+            const Color(0xFF5B6CFF),
+          ),
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: _buildStatCard('$discussions', 'Discussions', const Color(0xFF8D6BFF)),
+          child: _buildStatCard(
+            '$discussions',
+            'Discussions',
+            const Color(0xFF8D6BFF),
+          ),
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: _buildStatCard('$xpPoints', 'XP Points', const Color(0xFF34D399)),
+          child: _buildStatCard(
+            '$xpPoints',
+            'XP Points',
+            const Color(0xFF34D399),
+          ),
         ),
       ],
     );
@@ -430,10 +467,7 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 10,
-            ),
+            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10),
           ),
         ],
       ),
@@ -442,15 +476,47 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildAchievementsGrid(List achievementsFromDb) {
     final defaultAchievements = [
-      {'icon': '🔥', 'title': '7-Day Streak', 'is_locked': true, 'bg': const Color(0xFFFFB86C)},
-      {'icon': '📚', 'title': '100 Notes', 'is_locked': true, 'bg': const Color(0xFF5B6CFF)},
-      {'icon': '🏆', 'title': 'Top 3', 'is_locked': true, 'bg': const Color(0xFFFFD700)},
-      {'icon': '🎯', 'title': 'Quiz Master', 'is_locked': true, 'bg': const Color(0xFF5BE39D)},
-      {'icon': '💬', 'title': 'Helper', 'is_locked': true, 'bg': const Color(0xFF8D6BFF)},
-      {'icon': '⚡', 'title': 'Speed Learner', 'is_locked': true, 'bg': const Color(0xFF69D2FF)},
+      {
+        'icon': '🔥',
+        'title': '7-Day Streak',
+        'is_locked': true,
+        'bg': const Color(0xFFFFB86C),
+      },
+      {
+        'icon': '📚',
+        'title': '100 Notes',
+        'is_locked': true,
+        'bg': const Color(0xFF5B6CFF),
+      },
+      {
+        'icon': '🏆',
+        'title': 'Top 3',
+        'is_locked': true,
+        'bg': const Color(0xFFFFD700),
+      },
+      {
+        'icon': '🎯',
+        'title': 'Quiz Master',
+        'is_locked': true,
+        'bg': const Color(0xFF5BE39D),
+      },
+      {
+        'icon': '💬',
+        'title': 'Helper',
+        'is_locked': true,
+        'bg': const Color(0xFF8D6BFF),
+      },
+      {
+        'icon': '⚡',
+        'title': 'Speed Learner',
+        'is_locked': true,
+        'bg': const Color(0xFF69D2FF),
+      },
     ];
 
-    final items = achievementsFromDb.isNotEmpty ? achievementsFromDb : defaultAchievements;
+    final items = achievementsFromDb.isNotEmpty
+        ? achievementsFromDb
+        : defaultAchievements;
 
     return GridView.builder(
       shrinkWrap: true,
@@ -465,7 +531,9 @@ class _ProfilePageState extends State<ProfilePage> {
       itemBuilder: (context, index) {
         final item = items[index];
         final bool isLocked = item['is_locked'] ?? item['locked'] ?? true;
-        final Color bgColor = (item['bg'] is Color) ? item['bg'] : const Color(0xFF5B6CFF);
+        final Color bgColor = (item['bg'] is Color)
+            ? item['bg']
+            : const Color(0xFF5B6CFF);
 
         return Opacity(
           opacity: isLocked ? 0.45 : 1.0,
@@ -514,10 +582,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(height: 2),
                   const Text(
                     'Locked',
-                    style: TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 9,
-                    ),
+                    style: TextStyle(color: Color(0xFF6B7280), fontSize: 9),
                   ),
                 ],
               ],
@@ -564,20 +629,31 @@ class _ProfilePageState extends State<ProfilePage> {
           _buildSettingItem(
             icon: Icons.notifications_none_rounded,
             title: 'Notifikasi',
-            trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280), size: 20),
-            onTap: () {},
+            trailing: const Icon(
+              Icons.chevron_right,
+              color: Color(0xFF6B7280),
+              size: 20,
+            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationPage()),
+              );
+            },
           ),
           _divider(),
           _buildSettingItem(
             icon: Icons.bookmark_outline_rounded,
             title: 'Tersimpan',
-            trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280), size: 20),
+            trailing: const Icon(
+              Icons.chevron_right,
+              color: Color(0xFF6B7280),
+              size: 20,
+            ),
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const SavedPage(),
-                ),
+                MaterialPageRoute(builder: (context) => const SavedPage()),
               );
             },
           ),
@@ -585,7 +661,11 @@ class _ProfilePageState extends State<ProfilePage> {
           _buildSettingItem(
             icon: Icons.lock_outline_rounded,
             title: 'Privacy & Keamanan',
-            trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280), size: 20),
+            trailing: const Icon(
+              Icons.chevron_right,
+              color: Color(0xFF6B7280),
+              size: 20,
+            ),
             onTap: () async {
               final updated = await Navigator.push(
                 context,
@@ -603,7 +683,11 @@ class _ProfilePageState extends State<ProfilePage> {
           _buildSettingItem(
             icon: Icons.help_outline_rounded,
             title: 'Help Center',
-            trailing: const Icon(Icons.chevron_right, color: Color(0xFF6B7280), size: 20),
+            trailing: const Icon(
+              Icons.chevron_right,
+              color: Color(0xFF6B7280),
+              size: 20,
+            ),
             onTap: () {},
           ),
         ],
@@ -630,11 +714,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 color: const Color(0xFF5B6CFF).withOpacity(0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
-                icon,
-                size: 18,
-                color: const Color(0xFF5B6CFF),
-              ),
+              child: Icon(icon, size: 18, color: const Color(0xFF5B6CFF)),
             ),
             const SizedBox(width: 12),
             Expanded(

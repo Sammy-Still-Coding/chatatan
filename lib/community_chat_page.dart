@@ -466,6 +466,62 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
     );
   }
 
+  Future<void> _showGroupMembers() async {
+    try {
+      final members = await _dbHelper.getConversationMembers(_convIdInt);
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Anggota $_roomTitle',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: members.length,
+                    itemBuilder: (_, index) {
+                      final member = members[index];
+                      final name =
+                          member['full_name']?.toString().trim().isNotEmpty ==
+                              true
+                          ? member['full_name'].toString()
+                          : member['username']?.toString() ?? 'User';
+                      final isAdmin = member['role']?.toString() == 'ADMIN';
+                      return ListTile(
+                        leading: CircleAvatar(
+                          child: Text(name.substring(0, 1).toUpperCase()),
+                        ),
+                        title: Text(name),
+                        subtitle: isAdmin ? const Text('Admin') : null,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal memuat anggota: $error')));
+    }
+  }
+
   /// Modal Tambah Anggota Grup
   void _showAddMemberModal() async {
     List<String> existingMemberIds = [];
@@ -747,6 +803,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
               if (value == 'details') _showRoomDetails();
               if (value == 'nickname') _setNickname();
               if (value == 'rename_group') _renameGroup();
+              if (value == 'members') _showGroupMembers();
             },
             itemBuilder: (_) => [
               PopupMenuItem(
@@ -757,6 +814,11 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                 value: 'media',
                 child: Text('Media, link, dan dokumen'),
               ),
+              if (widget.isGroup)
+                const PopupMenuItem(
+                  value: 'members',
+                  child: Text('Lihat anggota'),
+                ),
               if (widget.isGroup)
                 const PopupMenuItem(
                   value: 'rename_group',

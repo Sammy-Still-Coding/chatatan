@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'db_helper.dart';
 import 'login_page.dart';
+import 'notification_page.dart';
 import 'pet_selection_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -20,6 +21,7 @@ class _HomePageState extends State<HomePage> {
   Map<String, dynamic>? _profile;
   Map<String, dynamic>? _gamification;
   Map<String, dynamic>? _pet;
+  int _unreadNotifications = 0;
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -27,7 +29,19 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _loadHome();
+    _openHomeAndClaimStreak();
+  }
+
+  /// Opening the signed-in app counts as the daily learning check-in. The RPC
+  /// is idempotent, so opening the app again on the same day never adds a day,
+  /// EXP, or milestone reward twice.
+  Future<void> _openHomeAndClaimStreak() async {
+    try {
+      await _dbHelper.claimLearningStreak();
+    } catch (_) {
+      // Home still loads if the optional daily check-in is temporarily offline.
+    }
+    if (mounted) await _loadHome();
   }
 
   // ============================================================
@@ -46,6 +60,7 @@ class _HomePageState extends State<HomePage> {
       final recentChats = await _dbHelper.getRecentChats(limit: 3);
 
       final recentForums = await _dbHelper.getRecentForums(limit: 3);
+      final unreadNotifications = await _dbHelper.getUnreadNotificationCount();
 
       if (!mounted) return;
 
@@ -56,6 +71,7 @@ class _HomePageState extends State<HomePage> {
 
         _recentChats = recentChats;
         _recentForums = recentForums;
+        _unreadNotifications = unreadNotifications;
 
         _isLoading = false;
       });
@@ -163,6 +179,16 @@ class _HomePageState extends State<HomePage> {
         ),
 
         actions: [
+          _NotificationButton(
+            count: _unreadNotifications,
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationPage()),
+              );
+              if (mounted) _loadHome();
+            },
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: _loadHome,
@@ -499,8 +525,9 @@ class _HomePageState extends State<HomePage> {
         Expanded(
           child: _StatCard(
             icon: Icons.star_rounded,
-            title: 'Points',
+            title: 'EXP',
             value: points.toString(),
+            onTap: _showExpInfo,
           ),
         ),
 
@@ -524,6 +551,42 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ],
+    );
+  }
+
+  void _showExpInfo() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => const SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(24, 8, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Cara mendapatkan EXP',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 14),
+              Text('• Upvote diskusi tanpa file: 1 EXP per net upvote.'),
+              SizedBox(height: 8),
+              Text(
+                '• Streak harian: 5 EXP, dengan bonus roadmap di hari 10, 30, 50, dan setiap 100 hari.',
+              ),
+              SizedBox(height: 8),
+              Text(
+                '• Kontribusi file forum: sumber EXP terbesar. Nilainya berasal dari skor kurasi (hingga 80 EXP) dan 4 EXP per net upvote.',
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Bonus kapasitas token milestone hanya diklaim satu kali seumur akun.',
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1165,6 +1228,49 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
+class _NotificationButton extends StatelessWidget {
+  const _NotificationButton({required this.count, required this.onPressed});
+
+  final int count;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'Notifikasi',
+      onPressed: onPressed,
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.notifications_none_rounded, color: Colors.black87),
+          if (count > 0)
+            Positioned(
+              right: -7,
+              top: -7,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Colors.redAccent,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  count > 99 ? '99+' : '$count',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 // ============================================================
 // STAT CARD
 // ============================================================
@@ -1173,41 +1279,47 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String value;
+  final VoidCallback? onTap;
 
   const _StatCard({
     required this.icon,
     required this.title,
     required this.value,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
 
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
 
-      child: Column(
-        children: [
-          Icon(icon, color: Colors.deepPurple, size: 24),
+        child: Column(
+          children: [
+            Icon(icon, color: Colors.deepPurple, size: 24),
 
-          const SizedBox(height: 8),
+            const SizedBox(height: 8),
 
-          Text(
-            value,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
 
-          const SizedBox(height: 2),
+            const SizedBox(height: 2),
 
-          Text(
-            title,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
-          ),
-        ],
+            Text(
+              title,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+            ),
+          ],
+        ),
       ),
     );
   }

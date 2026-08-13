@@ -16,6 +16,69 @@ class LibraryPage extends StatefulWidget {
   State<LibraryPage> createState() => LibraryPageState();
 }
 
+/// A dedicated route is used instead of an AlertDialog so the text field's
+/// Focus scope is disposed by a complete page transition. This avoids the
+/// Flutter `_dependents.isEmpty` framework assertion seen on some devices
+/// when a folder dialog is closed while the keyboard is active.
+class _FolderNamePage extends StatefulWidget {
+  const _FolderNamePage({required this.title});
+
+  final String title;
+
+  @override
+  State<_FolderNamePage> createState() => _FolderNamePageState();
+}
+
+class _FolderNamePageState extends State<_FolderNamePage> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _controller.text.trim();
+    if (name.isEmpty) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.of(context).pop(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _controller,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Nama folder',
+                  hintText: 'Contoh: Materi Semester 1',
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _submit,
+                icon: const Icon(Icons.create_new_folder_outlined),
+                label: const Text('Buat folder'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class LibraryPageState extends State<LibraryPage> {
   final DbHelper _dbHelper = DbHelper();
   final TextEditingController _searchController = TextEditingController();
@@ -1141,151 +1204,155 @@ class LibraryPageState extends State<LibraryPage> {
           ),
         ],
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(14),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: ListTile(
+          contentPadding: const EdgeInsets.all(14),
 
-        // --------------------------------------------------------
-        // ICON
-        // --------------------------------------------------------
-        leading: _buildLibraryPreview(item),
+          // --------------------------------------------------------
+          // ICON
+          // --------------------------------------------------------
+          leading: _buildLibraryPreview(item),
 
-        // --------------------------------------------------------
-        // ON TAP
-        // --------------------------------------------------------
-        onTap: () => _openItem(item),
+          // --------------------------------------------------------
+          // ON TAP
+          // --------------------------------------------------------
+          onTap: () => _openItem(item),
 
-        // --------------------------------------------------------
-        // TITLE
-        // --------------------------------------------------------
-        title: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+          // --------------------------------------------------------
+          // TITLE
+          // --------------------------------------------------------
+          title: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
 
-        // --------------------------------------------------------
-        // SUBTITLE
-        // --------------------------------------------------------
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (description.isNotEmpty)
-              Text(description, maxLines: 2, overflow: TextOverflow.ellipsis),
+          // --------------------------------------------------------
+          // SUBTITLE
+          // --------------------------------------------------------
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (description.isNotEmpty)
+                Text(description, maxLines: 2, overflow: TextOverflow.ellipsis),
 
-            const SizedBox(height: 4),
+              const SizedBox(height: 4),
 
-            Text(
-              fileName ?? _getFileLabel(sourceType, contentType),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
-            ),
-
-            if (fileSize != null)
               Text(
-                _formatFileSize(fileSize),
-                style: TextStyle(color: Colors.grey.shade400, fontSize: 10),
+                fileName ?? _getFileLabel(sourceType, contentType),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
               ),
-          ],
-        ),
 
-        // --------------------------------------------------------
-        // TRAILING
-        // --------------------------------------------------------
-        trailing: PopupMenuButton<String>(
-          tooltip: 'Aksi item',
-          onSelected: (action) {
-            switch (action) {
-              case 'open':
-                _openItem(item);
-                break;
-              case 'details':
-                _showItemInfo(item);
-                break;
-              case 'download':
-                _downloadItem(item);
-                break;
-              case 'share_link':
-                _shareDownloadLink(item);
-                break;
-              case 'move':
-                _moveItemToFolder(item);
-                break;
-              case 'favorite':
-                _toggleFavorite(item);
-                break;
-              case 'edit':
-                _editItem(item);
-                break;
-              case 'delete':
-                _deleteItem(item);
-                break;
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'open',
-              child: ListTile(
-                leading: Icon(Icons.visibility_outlined),
-                title: Text('Buka file'),
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'download',
-              child: ListTile(
-                leading: Icon(Icons.download_outlined),
-                title: Text('Unduh ke perangkat'),
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'share_link',
-              child: ListTile(
-                leading: Icon(Icons.link_outlined),
-                title: Text('Bagikan link unduhan'),
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'move',
-              child: ListTile(
-                leading: Icon(Icons.drive_file_move_outline),
-                title: Text('Pindahkan ke folder'),
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'details',
-              child: ListTile(
-                leading: Icon(Icons.info_outline),
-                title: Text('Lihat detail'),
-              ),
-            ),
-            PopupMenuItem(
-              value: 'favorite',
-              child: ListTile(
-                leading: Icon(isFavorite ? Icons.star_outline : Icons.star),
-                title: Text(
-                  isFavorite ? 'Hapus dari favorit' : 'Tambah favorit',
+              if (fileSize != null)
+                Text(
+                  _formatFileSize(fileSize),
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 10),
+                ),
+            ],
+          ),
+
+          // --------------------------------------------------------
+          // TRAILING
+          // --------------------------------------------------------
+          trailing: PopupMenuButton<String>(
+            tooltip: 'Aksi item',
+            onSelected: (action) {
+              switch (action) {
+                case 'open':
+                  _openItem(item);
+                  break;
+                case 'details':
+                  _showItemInfo(item);
+                  break;
+                case 'download':
+                  _downloadItem(item);
+                  break;
+                case 'share_link':
+                  _shareDownloadLink(item);
+                  break;
+                case 'move':
+                  _moveItemToFolder(item);
+                  break;
+                case 'favorite':
+                  _toggleFavorite(item);
+                  break;
+                case 'edit':
+                  _editItem(item);
+                  break;
+                case 'delete':
+                  _deleteItem(item);
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'open',
+                child: ListTile(
+                  leading: Icon(Icons.visibility_outlined),
+                  title: Text('Buka file'),
                 ),
               ),
-            ),
-            const PopupMenuItem(
-              value: 'edit',
-              child: ListTile(
-                leading: Icon(Icons.edit_outlined),
-                title: Text('Edit'),
+              const PopupMenuItem(
+                value: 'download',
+                child: ListTile(
+                  leading: Icon(Icons.download_outlined),
+                  title: Text('Unduh ke perangkat'),
+                ),
               ),
-            ),
-            const PopupMenuItem(
-              value: 'delete',
-              child: ListTile(
-                leading: Icon(Icons.delete_outline, color: Colors.red),
-                title: Text('Hapus', style: TextStyle(color: Colors.red)),
+              const PopupMenuItem(
+                value: 'share_link',
+                child: ListTile(
+                  leading: Icon(Icons.link_outlined),
+                  title: Text('Bagikan link unduhan'),
+                ),
               ),
+              const PopupMenuItem(
+                value: 'move',
+                child: ListTile(
+                  leading: Icon(Icons.drive_file_move_outline),
+                  title: Text('Pindahkan ke folder'),
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'details',
+                child: ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text('Lihat detail'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'favorite',
+                child: ListTile(
+                  leading: Icon(isFavorite ? Icons.star_outline : Icons.star),
+                  title: Text(
+                    isFavorite ? 'Hapus dari favorit' : 'Tambah favorit',
+                  ),
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'edit',
+                child: ListTile(
+                  leading: Icon(Icons.edit_outlined),
+                  title: Text('Edit'),
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'delete',
+                child: ListTile(
+                  leading: Icon(Icons.delete_outline, color: Colors.red),
+                  title: Text('Hapus', style: TextStyle(color: Colors.red)),
+                ),
+              ),
+            ],
+            child: Icon(
+              isFavorite ? Icons.star_rounded : Icons.more_vert_rounded,
+              color: isFavorite ? Colors.amber : Colors.grey.shade500,
             ),
-          ],
-          child: Icon(
-            isFavorite ? Icons.star_rounded : Icons.more_vert_rounded,
-            color: isFavorite ? Colors.amber : Colors.grey.shade500,
           ),
         ),
       ),
@@ -1634,34 +1701,15 @@ class LibraryPageState extends State<LibraryPage> {
   }
 
   Future<void> _createFolder() async {
-    final controller = TextEditingController();
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Buat folder'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(hintText: 'Nama folder'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Buat'),
-          ),
-        ],
+    final name = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const _FolderNamePage(title: 'Buat folder'),
       ),
     );
-    final name = controller.text.trim();
-    controller.dispose();
-    if (created != true || name.isEmpty) return;
+    if (name == null || name.trim().isEmpty) return;
     try {
-      await _dbHelper.createLibraryFolder(name: name);
+      await _dbHelper.createLibraryFolder(name: name.trim());
       await _loadLibrary();
     } catch (e) {
       if (mounted) {
@@ -1956,32 +2004,18 @@ class _LibraryFolderPageState extends State<LibraryFolderPage> {
   }
 
   Future<void> _createSubfolder() async {
-    final controller = TextEditingController();
-    final create = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Buat folder di dalam folder ini'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Nama folder'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Buat'),
-          ),
-        ],
+    final name = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) =>
+            const _FolderNamePage(title: 'Buat folder di dalam folder ini'),
       ),
     );
-    final name = controller.text.trim();
-    controller.dispose();
-    if (create != true || name.isEmpty || _folderId == null) return;
-    await _dbHelper.createLibraryFolder(name: name, parentFolderId: _folderId);
+    if (name == null || name.trim().isEmpty || _folderId == null) return;
+    await _dbHelper.createLibraryFolder(
+      name: name.trim(),
+      parentFolderId: _folderId,
+    );
     await _load();
   }
 
