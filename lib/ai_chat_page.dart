@@ -57,6 +57,13 @@ class _AiChatPageState extends State<AiChatPage> {
             ),
           );
       });
+      // A reopened chat should land on the newest message, just like a chat
+      // that has remained open.  Wait until ListView has received its items.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      });
     } catch (_) {
       // The AI can still be used if the history SQL/RLS migration is pending.
     } finally {

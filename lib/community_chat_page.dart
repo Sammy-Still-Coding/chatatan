@@ -63,7 +63,12 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
         .from('conversation_members')
         .stream(primaryKey: ['conversation_id', 'user_id'])
         .eq('conversation_id', _convIdInt)
-        .listen(_syncReadReceipts);
+        .listen(
+          _syncReadReceipts,
+          // The periodic room refresh remains a safe fallback while a project
+          // has not yet enabled this table in Supabase Realtime.
+          onError: (_, __) {},
+        );
     _presenceTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       _dbHelper.setMyPresence(true);
       _loadRoomInfo();

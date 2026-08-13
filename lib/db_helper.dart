@@ -54,7 +54,11 @@ class DbHelper {
         .from('ai_messages')
         .select('id, sender_type, content, message_type, created_at')
         .eq('conversation_id', conversationId)
-        .order('created_at');
+        // `created_at` can be identical when a user message and the reply are
+        // stored within the same database tick.  `id` makes that tie stable,
+        // so a reopened conversation keeps the original chronological order.
+        .order('created_at', ascending: true)
+        .order('id', ascending: true);
     return List<Map<String, dynamic>>.from(response);
   }
 
