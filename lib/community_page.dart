@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'db_helper.dart';
 import 'community_chat_page.dart';
@@ -5,6 +7,7 @@ import 'create_forum_modal.dart';
 import 'forum_tab.dart';
 import 'ai_chat_page.dart';
 import 'forum_detail_page.dart';
+import 'chatatan_theme.dart';
 
 class CommunityPage extends StatefulWidget {
   const CommunityPage({super.key, this.initialTabIndex = 1});
@@ -58,9 +61,10 @@ class _UserSearchSheetState extends State<_UserSearchSheet> {
           height: MediaQuery.of(context).size.height * .65,
           child: Column(
             children: [
+              const ChatatanSheetHandle(),
               const Text(
                 'Cari Orang / Mulai Chat',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -85,16 +89,37 @@ class _UserSearchSheetState extends State<_UserSearchSheet> {
                         itemBuilder: (_, index) {
                           final user = _results[index];
                           final name = user['username']?.toString() ?? 'User';
-                          return ListTile(
-                            leading: CircleAvatar(
-                              child: Text(name.substring(0, 1).toUpperCase()),
+                          return ChatatanGlass(
+                            radius: 19,
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: ChatatanColors.primary
+                                    .withValues(alpha: .12),
+                                child: Text(
+                                  name.substring(0, 1).toUpperCase(),
+                                  style: const TextStyle(
+                                    color: ChatatanColors.primary,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              title: Text(
+                                name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              subtitle: const Text('Mulai chat pribadi'),
+                              trailing: const Icon(
+                                Icons.arrow_forward_rounded,
+                                color: ChatatanColors.primary,
+                              ),
+                              onTap: () {
+                                Navigator.pop(context);
+                                widget.onSelected(user['id'].toString(), name);
+                              },
                             ),
-                            title: Text(name),
-                            subtitle: const Text('Mulai chat pribadi'),
-                            onTap: () {
-                              Navigator.pop(context);
-                              widget.onSelected(user['id'].toString(), name);
-                            },
                           );
                         },
                       ),
@@ -149,9 +174,10 @@ class _ForumSearchSheetState extends State<_ForumSearchSheet> {
           height: MediaQuery.of(context).size.height * .65,
           child: Column(
             children: [
+              const ChatatanSheetHandle(),
               const Text(
                 'Cari diskusi forum',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -173,23 +199,39 @@ class _ForumSearchSheetState extends State<_ForumSearchSheet> {
                         itemCount: _results.length,
                         itemBuilder: (_, index) {
                           final post = _results[index];
-                          return ListTile(
-                            title: Text(post['title']?.toString() ?? 'Diskusi'),
-                            subtitle: Text(
-                              post['content']?.toString() ?? '',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onTap: () {
-                              final id = int.tryParse(post['id'].toString());
-                              if (id == null) return;
-                              Navigator.pop(context);
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => ForumDetailPage(postId: id),
+                          return ChatatanGlass(
+                            radius: 19,
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                backgroundColor: Color(0xFFEDEBFF),
+                                child: Icon(
+                                  Icons.forum_outlined,
+                                  color: ChatatanColors.primary,
                                 ),
-                              );
-                            },
+                              ),
+                              title: Text(
+                                post['title']?.toString() ?? 'Diskusi',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              subtitle: Text(
+                                post['content']?.toString() ?? '',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              onTap: () {
+                                final id = int.tryParse(post['id'].toString());
+                                if (id == null) return;
+                                Navigator.pop(context);
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ForumDetailPage(postId: id),
+                                  ),
+                                );
+                              },
+                            ),
                           );
                         },
                       ),
@@ -234,7 +276,8 @@ class _UnreadBadge extends StatelessWidget {
   }
 }
 
-class CommunityPageState extends State<CommunityPage> {
+class CommunityPageState extends State<CommunityPage>
+    with SingleTickerProviderStateMixin {
   final DbHelper _dbHelper = DbHelper();
 
   // 0: Groups, 1: Forum, 2: Chats. Forum menjadi halaman Community default.
@@ -243,18 +286,40 @@ class CommunityPageState extends State<CommunityPage> {
   List<Map<String, dynamic>> _recentChats = [];
   List<Map<String, dynamic>> _groups = [];
   Map<int, int> _unreadCounts = {};
+  late final AnimationController _tabBubbleController;
+  late Animation<double> _tabIndexAnimation;
 
   @override
   void initState() {
     super.initState();
     _selectedTabIndex = widget.initialTabIndex.clamp(0, 2);
+    _tabBubbleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+    _tabIndexAnimation = AlwaysStoppedAnimation(_selectedTabIndex.toDouble());
     _loadRecentChats();
+  }
+
+  @override
+  void dispose() {
+    _tabBubbleController.dispose();
+    super.dispose();
   }
 
   void selectTab(int index) {
     final tab = index.clamp(0, 2);
     if (_selectedTabIndex == tab) return;
+    final fromValue = _tabIndexAnimation.value;
     setState(() => _selectedTabIndex = tab);
+    _tabIndexAnimation = Tween<double>(begin: fromValue, end: tab.toDouble())
+        .animate(
+          CurvedAnimation(
+            parent: _tabBubbleController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+    _tabBubbleController.forward(from: 0);
     if (tab == 0 || tab == 2) _loadRecentChats();
   }
 
@@ -295,12 +360,8 @@ class CommunityPageState extends State<CommunityPage> {
 
   /// Menampilkan BottomSheet untuk mencari orang berdasarkan Username
   void _showSearchUserModal() {
-    showModalBottomSheet(
+    showChatatanGlassSheet(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (_) => _UserSearchSheet(
         onSelected: (userId, username) {
           _openPrivateChat(userId, username);
@@ -310,12 +371,8 @@ class CommunityPageState extends State<CommunityPage> {
   }
 
   void _showForumSearch() {
-    showModalBottomSheet(
+    showChatatanGlassSheet(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (_) => const _ForumSearchSheet(),
     );
   }
@@ -324,9 +381,8 @@ class CommunityPageState extends State<CommunityPage> {
     // Hanya jalankan jika tab aktif saat ini adalah Forum (misal index 1)
     if (_selectedTabIndex == 1) {
       // Sesuaikan '_selectedTabIndex' dengan nama variabel index tab di kodemu
-      final isCreated = await showModalBottomSheet<bool>(
+      final isCreated = await showChatatanGlassSheet<bool>(
         context: context,
-        isScrollControlled: true,
         builder: (_) => const CreateForumModal(),
       );
 
@@ -342,19 +398,15 @@ class CommunityPageState extends State<CommunityPage> {
     List<Map<String, dynamic>> searchResults = [];
     List<Map<String, dynamic>> selectedUsers = [];
 
-    showModalBottomSheet(
+    showChatatanGlassSheet(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-                top: 20,
+                top: 0,
                 left: 16,
                 right: 16,
               ),
@@ -363,6 +415,7 @@ class CommunityPageState extends State<CommunityPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const ChatatanSheetHandle(),
                     const Text(
                       'Buat Grup Baru',
                       style: TextStyle(
@@ -377,12 +430,7 @@ class CommunityPageState extends State<CommunityPage> {
                       decoration: InputDecoration(
                         labelText: 'Nama Grup',
                         hintText: 'Contoh: Study Group OOP',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
+                        prefixIcon: const Icon(Icons.groups_2_outlined),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -412,12 +460,6 @@ class CommunityPageState extends State<CommunityPage> {
                       decoration: InputDecoration(
                         hintText: 'Cari & pilih anggota...',
                         prefixIcon: const Icon(Icons.search),
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
                       ),
                       onChanged: (val) async {
                         if (val.trim().isEmpty) {
@@ -466,14 +508,7 @@ class CommunityPageState extends State<CommunityPage> {
                     // Tombol Submit Buat Grup
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6C63FF),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
+                      child: FilledButton.icon(
                         onPressed: () async {
                           final title = groupNameController.text.trim();
                           if (title.isEmpty) {
@@ -521,9 +556,10 @@ class CommunityPageState extends State<CommunityPage> {
                             }
                           }
                         },
-                        child: const Text(
+                        icon: const Icon(Icons.group_add_rounded),
+                        label: const Text(
                           'Buat Grup',
-                          style: TextStyle(color: Colors.white, fontSize: 16),
+                          style: TextStyle(fontSize: 16),
                         ),
                       ),
                     ),
@@ -577,65 +613,68 @@ class CommunityPageState extends State<CommunityPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(
-        0xFFF5F6FF,
-      ), // Warna background soft lavender/putih
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ================= HEADER & SEARCH/ADD BUTTONS =================
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: Row(
-                children: [
-                  const Text(
-                    'Community 🌍',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1F1D42),
+      backgroundColor: ChatatanColors.background,
+      body: ChatatanAmbientBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              // ================= HEADER & SEARCH/ADD BUTTONS =================
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Community',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: ChatatanColors.ink,
+                      ),
                     ),
-                  ),
-                  const Spacer(),
-                  // Tombol Search
-                  _buildIconButton(
-                    icon: Icons.search,
-                    onTap: _selectedTabIndex == 1
-                        ? _showForumSearch
-                        : _showSearchUserModal,
-                  ),
-                  const SizedBox(width: 8),
-                  // Tombol Plus (+) untuk cari/buat chat baru
-                  _buildIconButton(
-                    icon: Icons.add,
-                    onTap: () {
-                      if (_selectedTabIndex == 2) {
-                        _showSearchUserModal(); // Jika di tab Chats -> Cari User Private
-                      } else if (_selectedTabIndex == 0) {
-                        _showCreateGroupModal(); // Jika di tab Groups -> Buat Grup Baru
-                      } else if (_selectedTabIndex == 1) {
-                        _openCreateForumModal(); // <-- TAMBAHKAN BARIS INI (Jika di tab Forum)
-                      }
-                    },
-                  ),
-                ],
+                    const Spacer(),
+                    // Tombol Search
+                    _buildIconButton(
+                      icon: Icons.search,
+                      onTap: _selectedTabIndex == 1
+                          ? _showForumSearch
+                          : _showSearchUserModal,
+                    ),
+                    const SizedBox(width: 8),
+                    // Tombol Plus (+) untuk cari/buat chat baru
+                    _buildIconButton(
+                      icon: Icons.add,
+                      onTap: () {
+                        if (_selectedTabIndex == 2) {
+                          _showSearchUserModal(); // Jika di tab Chats -> Cari User Private
+                        } else if (_selectedTabIndex == 0) {
+                          _showCreateGroupModal(); // Jika di tab Groups -> Buat Grup Baru
+                        } else if (_selectedTabIndex == 1) {
+                          _openCreateForumModal(); // <-- TAMBAHKAN BARIS INI (Jika di tab Forum)
+                        }
+                      },
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // ================= TAB SWITCHER (Groups | Forum | Chats) =================
-            _buildTabSwitcher(),
+              // ================= TAB SWITCHER (Groups | Forum | Chats) =================
+              _buildTabSwitcher(),
 
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-            // ================= DAFTAR CHAT / KONTEN TAB =================
-            Expanded(
-              child: _selectedTabIndex == 2
-                  ? _buildChatsList()
-                  : _selectedTabIndex == 0
-                  ? _buildGroupsList() // Tampilkan daftar grup
-                  : const ForumTab(),
-            ),
-          ],
+              // ================= DAFTAR CHAT / KONTEN TAB =================
+              Expanded(
+                child: _selectedTabIndex == 2
+                    ? _buildChatsList()
+                    : _selectedTabIndex == 0
+                    ? _buildGroupsList() // Tampilkan daftar grup
+                    : const ForumTab(),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -647,10 +686,11 @@ class CommunityPageState extends State<CommunityPage> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: 1,
-      shadowColor: Colors.black12,
+      color: Colors.white.withValues(alpha: .64),
+      shape: CircleBorder(
+        side: BorderSide(color: Colors.white.withValues(alpha: .92)),
+      ),
+      elevation: 0,
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
@@ -697,16 +737,20 @@ class CommunityPageState extends State<CommunityPage> {
                     : lastMessage['content']?.toString() ?? 'Belum ada pesan'
               : 'Belum ada pesan';
 
-          return Card(
-            elevation: 0,
+          return ChatatanGlass(
             margin: const EdgeInsets.only(bottom: 8),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
+            radius: 20,
+            opacity: .66,
             child: ListTile(
               leading: CircleAvatar(
                 backgroundColor: const Color(0xFFEEECFF),
-                child: const Icon(Icons.groups, color: Color(0xFF6C63FF)),
+                backgroundImage:
+                    group['avatar_url']?.toString().trim().isNotEmpty == true
+                    ? NetworkImage(group['avatar_url'].toString())
+                    : null,
+                child: group['avatar_url']?.toString().trim().isNotEmpty == true
+                    ? null
+                    : const Icon(Icons.groups, color: Color(0xFF6C63FF)),
               ),
               title: Text(
                 title,
@@ -744,44 +788,106 @@ class CommunityPageState extends State<CommunityPage> {
 
   /// Widget Tab Bar Switcher Custom
   Widget _buildTabSwitcher() {
-    return Container(
+    const labels = ['Groups', 'Forum', 'Chats'];
+    const switcherHeight = 50.0;
+    return ChatatanGlass(
       margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        children: [
-          _buildTabItem('Groups', 0),
-          _buildTabItem('Forum', 1),
-          _buildTabItem('Chats', 2),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabItem(String title, int index) {
-    final isSelected = _selectedTabIndex == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedTabIndex = index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF6C63FF) : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            title,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey.shade600,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-              fontSize: 14,
-            ),
-          ),
+      padding: const EdgeInsets.all(5),
+      radius: 28,
+      opacity: .66,
+      blur: 26,
+      child: SizedBox(
+        height: switcherHeight,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final segmentWidth = constraints.maxWidth / labels.length;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedBuilder(
+                  animation: _tabBubbleController,
+                  builder: (context, _) {
+                    final t = _tabBubbleController.value.clamp(0.0, 1.0);
+                    final stretch = math.sin(math.pi * t);
+                    final centerX =
+                        segmentWidth * (_tabIndexAnimation.value + .5);
+                    final bubbleWidth = segmentWidth * .94 + (26 * stretch);
+                    final bubbleHeight = switcherHeight * .86 - (10 * stretch);
+                    return Positioned(
+                      left: centerX - bubbleWidth / 2,
+                      top: (switcherHeight - bubbleHeight) / 2,
+                      width: bubbleWidth,
+                      height: bubbleHeight,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(bubbleHeight / 2),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              const Color(0xFF7168F6).withValues(alpha: .76),
+                              const Color(0xFF9D8AF5).withValues(alpha: .58),
+                            ],
+                          ),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: .56),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: ChatatanColors.primary.withValues(
+                                alpha: .18,
+                              ),
+                              blurRadius: 14,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                Row(
+                  children: List.generate(labels.length, (index) {
+                    final selected = _selectedTabIndex == index;
+                    return Expanded(
+                      child: Semantics(
+                        button: true,
+                        selected: selected,
+                        label: labels[index],
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(24),
+                          onTap: () => selectTab(index),
+                          child: Center(
+                            child: AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 240),
+                              curve: Curves.easeOut,
+                              style: TextStyle(
+                                color: selected
+                                    ? Colors.white
+                                    : ChatatanColors.muted,
+                                fontWeight: selected
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                fontSize: 14,
+                                shadows: selected
+                                    ? const [
+                                        Shadow(
+                                          color: Color(0x55000000),
+                                          blurRadius: 5,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Text(labels[index]),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -884,10 +990,9 @@ class CommunityPageState extends State<CommunityPage> {
 
   /// Widget khusus Item Chat AI (ChaTatan AI)
   Widget _buildAiChatItem() {
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return ChatatanGlass(
+      radius: 20,
+      opacity: .66,
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Stack(
@@ -972,11 +1077,10 @@ class CommunityPageState extends State<CommunityPage> {
     int unreadCount = 0,
     required VoidCallback onTap,
   }) {
-    return Card(
-      elevation: 0,
+    return ChatatanGlass(
       margin: const EdgeInsets.only(bottom: 8),
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      radius: 20,
+      opacity: .66,
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Stack(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'attachment_preview.dart';
 import 'db_helper.dart';
+import 'chatatan_theme.dart';
 
 class ForumDetailPage extends StatefulWidget {
   final int postId;
@@ -79,7 +80,13 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
 
       final attachments = await _dbHelper.getForumAttachments(widget.postId);
       final postVote = await _dbHelper.getForumPostVote(widget.postId);
-      
+      Set<int> likedReplyIds = {};
+      try {
+        likedReplyIds = await _dbHelper.getMyLikedForumReplies(widget.postId);
+      } catch (_) {
+        // Migration lama tetap dapat membuka detail forum.
+      }
+
       // Ambil status bookmark awal
       final isBookmarked = await _dbHelper.isForumPostBookmarked(widget.postId);
 
@@ -90,6 +97,9 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
         _attachments = attachments;
         _postVote = postVote;
         _isBookmarked = isBookmarked;
+        _likedReplyIds
+          ..clear()
+          ..addAll(likedReplyIds);
       });
     } catch (e) {
       debugPrint('Error load detail: $e');
@@ -152,9 +162,9 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal mengubah bookmark: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal mengubah bookmark: $e')));
     }
   }
 
@@ -400,29 +410,26 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
 
   Future<void> _toggleReplyLike(int index) async {
     final reply = _replies[index];
-    final replyId = reply['id'];
-    final isLiked = _likedReplyIds.contains(replyId);
-    final currentLikes = (reply['like_count'] as int?) ?? 0;
-
-    final newLikes = isLiked ? (currentLikes - 1) : (currentLikes + 1);
-    final safeLikes = newLikes < 0 ? 0 : newLikes;
-
-    setState(() {
-      if (isLiked) {
-        _likedReplyIds.remove(replyId);
-      } else {
-        _likedReplyIds.add(replyId);
-      }
-      _replies[index]['like_count'] = safeLikes;
-    });
+    final replyId = int.tryParse(reply['id'].toString());
+    if (replyId == null) return;
 
     try {
-      await _supabase
-          .from('forum_replies')
-          .update({'like_count': safeLikes})
-          .eq('id', replyId);
+      final result = await _dbHelper.toggleForumReplyLike(replyId);
+      if (!mounted) return;
+      setState(() {
+        if (result['liked'] == true) {
+          _likedReplyIds.add(replyId);
+        } else {
+          _likedReplyIds.remove(replyId);
+        }
+        _replies[index]['like_count'] = result['like_count'] ?? 0;
+      });
     } catch (e) {
-      debugPrint('Gagal update like reply: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal memperbarui like: $e')));
+      }
     }
   }
 
@@ -517,7 +524,7 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
     final repliesCount = _replies.length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FB),
+      backgroundColor: ChatatanColors.background,
       appBar: AppBar(
         title: const Text(
           'Detail Forum',
@@ -527,7 +534,7 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0.5,
         iconTheme: const IconThemeData(color: Colors.black),
       ),
@@ -541,8 +548,25 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                 children: [
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withValues(alpha: .66),
+                          const Color(0xFFDDE7FF).withValues(alpha: .34),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .9),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: ChatatanColors.primary.withValues(alpha: .10),
+                          blurRadius: 24,
+                          offset: const Offset(0, 9),
+                        ),
+                      ],
                     ),
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -739,8 +763,27 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                       return Container(
                         margin: const EdgeInsets.only(bottom: 10),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.white.withValues(alpha: .70),
+                              const Color(0xFFDDE7FF).withValues(alpha: .34),
+                            ],
+                          ),
                           borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: .9),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: ChatatanColors.primary.withValues(
+                                alpha: .07,
+                              ),
+                              blurRadius: 18,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
                         ),
                         padding: const EdgeInsets.all(14),
                         child: Row(

@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'attachment_preview.dart';
 import 'db_helper.dart';
 import 'library_attachment_picker.dart';
+import 'chatatan_theme.dart';
 
 class CommunityChatPage extends StatefulWidget {
   final dynamic conversationId;
@@ -27,6 +29,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   final DbHelper _dbHelper = DbHelper();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ImagePicker _imagePicker = ImagePicker();
   Timer? _presenceTimer;
   StreamSubscription<List<Map<String, dynamic>>>? _memberReadSubscription;
 
@@ -39,9 +42,19 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   Map<String, Map<String, dynamic>> _memberProfiles = {};
   int _lastReadMessageIdSent = 0;
   late String _roomTitle;
+  String? _roomAvatarUrl;
+  String? _roomOwnerId;
+  String? _myGroupRole;
 
   int get _convIdInt => int.tryParse(widget.conversationId.toString()) ?? 0;
   String? get currentUserId => _supabase.auth.currentUser?.id;
+  String get _normalizedGroupRole => _myGroupRole?.toUpperCase().trim() ?? '';
+  bool get _isGroupOwner =>
+      widget.isGroup &&
+      currentUserId != null &&
+      (currentUserId == _roomOwnerId || _normalizedGroupRole == 'OWNER');
+  bool get _isGroupManager =>
+      widget.isGroup && (_isGroupOwner || _normalizedGroupRole == 'ADMIN');
 
   @override
   void dispose() {
@@ -94,21 +107,43 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
 
   Future<void> _loadRoomInfo() async {
     try {
-      final members = await _supabase
-          .from('conversation_members')
-          .select(
-            'user_id, last_read_message_id, user_presence(is_online, last_seen_at), conversation_member_settings(is_pinned)',
-          )
-          .eq('conversation_id', _convIdInt);
+      final room = await _dbHelper.getConversation(_convIdInt);
+      if (!mounted) return;
+
+      // Ownership must not depend on presence/settings relations. Those
+      // relations can be unavailable while their migration or Realtime setup
+      // is still being applied, but the group creator must remain an owner.
+      _roomOwnerId = room?['created_by']?.toString();
+      _roomAvatarUrl = room?['avatar_url']?.toString();
+      if (room?['title']?.toString().trim().isNotEmpty == true) {
+        _roomTitle = room!['title'].toString();
+      }
+      setState(() {});
+
+      List<Map<String, dynamic>> members;
+      try {
+        final response = await _supabase
+            .from('conversation_members')
+            .select(
+              'user_id, role, last_read_message_id, user_presence(is_online, last_seen_at), conversation_member_settings(is_pinned)',
+            )
+            .eq('conversation_id', _convIdInt);
+        members = response.cast<Map<String, dynamic>>();
+      } catch (_) {
+        final fallback = await _supabase
+            .from('conversation_members')
+            .select('user_id, role, last_read_message_id')
+            .eq('conversation_id', _convIdInt);
+        members = fallback.cast<Map<String, dynamic>>();
+      }
       final other = members
-          .cast<Map<String, dynamic>>()
           .where((member) => member['user_id']?.toString() != currentUserId)
           .toList();
       final own = members
-          .cast<Map<String, dynamic>>()
           .where((member) => member['user_id']?.toString() == currentUserId)
           .toList();
       if (!mounted) return;
+      _myGroupRole = own.isEmpty ? null : own.first['role']?.toString();
       if (other.length == 1) {
         final rawPresence = other.first['user_presence'];
         final presence = rawPresence is List && rawPresence.isNotEmpty
@@ -133,6 +168,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
           for (final profile in profiles)
             profile['user_id']?.toString() ?? '': profile,
         };
+        if (!widget.isGroup && other.isNotEmpty) {
+          final otherId = other.first['user_id']?.toString() ?? '';
+          _roomAvatarUrl = _memberProfiles[otherId]?['avatar_url']?.toString();
+        }
       } catch (_) {
         // Read receipts still work with initials if profile lookup is blocked.
       }
@@ -209,6 +248,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   }
 
   Future<void> _renameGroup() async {
+    if (!_isGroupManager) return;
     final controller = TextEditingController(text: _roomTitle);
     final saved = await showDialog<bool>(
       context: context,
@@ -230,12 +270,94 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
     final title = controller.text.trim();
     controller.dispose();
     if (saved != true || title.isEmpty) return;
-    await _supabase
-        .from('conversations')
-        .update({'title': title})
-        .eq('id', _convIdInt);
+    await _supabase.rpc(
+      'update_group_profile',
+      params: {
+        'p_conversation_id': _convIdInt,
+        'p_title': title,
+        'p_avatar_url': null,
+      },
+    );
     if (!mounted) return;
     setState(() => _roomTitle = title);
+  }
+
+  Widget _roomAvatar({double radius = 20}) {
+    final url = _roomAvatarUrl?.trim();
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: const Color(0xFFE6E1FF),
+      backgroundImage: url != null && url.isNotEmpty ? NetworkImage(url) : null,
+      child: url != null && url.isNotEmpty
+          ? null
+          : Icon(
+              widget.isGroup ? Icons.groups_rounded : Icons.person_rounded,
+              color: const Color(0xFF6258E8),
+              size: radius * 1.05,
+            ),
+    );
+  }
+
+  Future<void> _changeGroupAvatar() async {
+    if (!_isGroupManager) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Hanya owner atau admin yang dapat mengganti foto grup.',
+          ),
+        ),
+      );
+      return;
+    }
+    final image = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 82,
+      maxWidth: 1200,
+      maxHeight: 1200,
+    );
+    if (image == null) return;
+    try {
+      final url = await _dbHelper.uploadGroupAvatar(_convIdInt, image);
+      if (!mounted) return;
+      setState(() => _roomAvatarUrl = url);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Foto profil grup diperbarui.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengganti foto grup: $error')),
+      );
+    }
+  }
+
+  Future<void> _changeMemberAdmin(
+    Map<String, dynamic> member,
+    bool makeAdmin,
+  ) async {
+    if (!_isGroupOwner) return;
+    try {
+      await _dbHelper.setGroupMemberAdmin(
+        conversationId: _convIdInt,
+        userId: member['user_id'].toString(),
+        isAdmin: makeAdmin,
+      );
+      await _loadRoomInfo();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            makeAdmin ? 'Anggota dijadikan admin.' : 'Admin dijadikan anggota.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal mengubah admin: $error')));
+    }
   }
 
   /// Mengambil nama pengirim dari tabel users jika belum tersimpan di cache
@@ -384,8 +506,28 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
             child: Column(
               children: [
                 ListTile(
-                  leading: CircleAvatar(
-                    child: Text(_roomTitle.substring(0, 1).toUpperCase()),
+                  leading: GestureDetector(
+                    onTap: _isGroupManager ? _changeGroupAvatar : null,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        _roomAvatar(radius: 26),
+                        if (_isGroupManager)
+                          const Positioned(
+                            right: -3,
+                            bottom: -3,
+                            child: CircleAvatar(
+                              radius: 10,
+                              backgroundColor: Color(0xFF6258E8),
+                              child: Icon(
+                                Icons.camera_alt_rounded,
+                                size: 11,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                   title: Text(
                     _roomTitle,
@@ -417,11 +559,46 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                           ),
                           ListTile(
                             leading: const Icon(Icons.person_outline),
-                            title: const Text('Nama panggilan'),
-                            subtitle: const Text(
-                              'Atur dari menu chat pada pembaruan berikutnya',
+                            title: Text(
+                              widget.isGroup
+                                  ? 'Anggota grup'
+                                  : 'Nama panggilan',
                             ),
+                            subtitle: Text(
+                              widget.isGroup
+                                  ? 'Lihat owner, admin, dan seluruh anggota'
+                                  : 'Atur nama khusus untuk chat ini',
+                            ),
+                            onTap: widget.isGroup
+                                ? () {
+                                    Navigator.pop(sheetContext);
+                                    _showGroupMembers();
+                                  }
+                                : () {
+                                    Navigator.pop(sheetContext);
+                                    _setNickname();
+                                  },
                           ),
+                          if (widget.isGroup)
+                            ListTile(
+                              leading: Icon(
+                                _isGroupManager
+                                    ? Icons.add_a_photo_outlined
+                                    : Icons.lock_outline_rounded,
+                              ),
+                              title: const Text('Ganti foto profil grup'),
+                              subtitle: Text(
+                                _isGroupManager
+                                    ? (_isGroupOwner
+                                          ? 'Anda adalah Owner'
+                                          : 'Anda adalah Admin')
+                                    : 'Hanya owner atau admin',
+                              ),
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                _changeGroupAvatar();
+                              },
+                            ),
                         ],
                       ),
                       GridView.builder(
@@ -531,13 +708,91 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                               true
                           ? member['full_name'].toString()
                           : member['username']?.toString() ?? 'User';
+                      final memberId = member['user_id']?.toString() ?? '';
+                      final isOwner = memberId == _roomOwnerId;
                       final isAdmin = member['role']?.toString() == 'ADMIN';
                       return ListTile(
                         leading: CircleAvatar(
-                          child: Text(name.substring(0, 1).toUpperCase()),
+                          backgroundImage:
+                              member['avatar_url']
+                                      ?.toString()
+                                      .trim()
+                                      .isNotEmpty ==
+                                  true
+                              ? NetworkImage(member['avatar_url'].toString())
+                              : null,
+                          child:
+                              member['avatar_url']
+                                      ?.toString()
+                                      .trim()
+                                      .isNotEmpty ==
+                                  true
+                              ? null
+                              : Text(name.substring(0, 1).toUpperCase()),
                         ),
-                        title: Text(name),
-                        subtitle: isAdmin ? const Text('Admin') : null,
+                        title: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (isOwner || isAdmin) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isOwner
+                                      ? const Color(0xFFFFE9B0)
+                                      : const Color(0xFFE7E2FF),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  isOwner ? 'Owner' : 'Admin',
+                                  style: TextStyle(
+                                    color: isOwner
+                                        ? const Color(0xFF9A6500)
+                                        : const Color(0xFF6258E8),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        subtitle: Text(
+                          memberId == currentUserId ? 'Anda' : 'Anggota grup',
+                        ),
+                        trailing: _isGroupOwner && !isOwner
+                            ? PopupMenuButton<String>(
+                                tooltip: 'Atur peran',
+                                onSelected: (value) async {
+                                  Navigator.pop(sheetContext);
+                                  await _changeMemberAdmin(
+                                    member,
+                                    value == 'make_admin',
+                                  );
+                                  if (mounted) _showGroupMembers();
+                                },
+                                itemBuilder: (_) => [
+                                  PopupMenuItem(
+                                    value: isAdmin
+                                        ? 'remove_admin'
+                                        : 'make_admin',
+                                    child: Text(
+                                      isAdmin
+                                          ? 'Hapus dari admin'
+                                          : 'Jadikan admin',
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : null,
                       );
                     },
                   ),
@@ -877,20 +1132,54 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: ChatatanColors.background,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFF1EEFF), Color(0xFFE2E5FF)],
+            ),
+          ),
+        ),
         title: InkWell(
           onTap: _showRoomDetails,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          borderRadius: BorderRadius.circular(18),
+          child: Row(
             children: [
-              Text(_roomTitle, style: const TextStyle(fontSize: 16)),
-              if (_roomSubtitle.isNotEmpty)
-                Text(_roomSubtitle, style: const TextStyle(fontSize: 11)),
+              _roomAvatar(radius: 19),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _roomTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    if (_roomSubtitle.isNotEmpty)
+                      Text(
+                        _roomSubtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF6D7090),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
         actions: [
-          if (widget.isGroup)
+          if (_isGroupManager)
             IconButton(
               icon: const Icon(Icons.person_add_alt_1_outlined),
               tooltip: 'Tambah Anggota',
@@ -904,6 +1193,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
               if (value == 'nickname') _setNickname();
               if (value == 'rename_group') _renameGroup();
               if (value == 'members') _showGroupMembers();
+              if (value == 'group_avatar') _changeGroupAvatar();
             },
             itemBuilder: (_) => [
               PopupMenuItem(
@@ -921,6 +1211,11 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                 ),
               if (widget.isGroup)
                 const PopupMenuItem(
+                  value: 'group_avatar',
+                  child: Text('Ganti foto grup'),
+                ),
+              if (_isGroupManager)
+                const PopupMenuItem(
                   value: 'rename_group',
                   child: Text('Ubah nama grup'),
                 )
@@ -937,197 +1232,234 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          if (_isUploading)
-            const LinearProgressIndicator(
-              backgroundColor: Colors.transparent,
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6C63FF)),
-            ),
-          Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _supabase
-                  .from('messages')
-                  .stream(primaryKey: ['id'])
-                  .eq('conversation_id', _convIdInt)
-                  .order('created_at', ascending: true),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text('Terjadi kesalahan: ${snapshot.error}'),
-                  );
-                }
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+      body: ChatatanAmbientBackground(
+        child: Column(
+          children: [
+            if (_isUploading)
+              const LinearProgressIndicator(
+                backgroundColor: Colors.transparent,
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6C63FF)),
+              ),
+            Expanded(
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _supabase
+                    .from('messages')
+                    .stream(primaryKey: ['id'])
+                    .eq('conversation_id', _convIdInt)
+                    .order('created_at', ascending: true),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text('Terjadi kesalahan: ${snapshot.error}'),
+                    );
+                  }
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                final messages = snapshot.data!;
+                  final messages = snapshot.data!;
 
-                if (messages.isNotEmpty) {
-                  final id = int.tryParse(messages.last['id'].toString());
-                  if (id != null) _markRoomRead(id);
-                }
+                  if (messages.isNotEmpty) {
+                    final id = int.tryParse(messages.last['id'].toString());
+                    if (id != null) _markRoomRead(id);
+                  }
 
-                if (messages.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'Belum ada pesan. Mulai percakapan!',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  );
-                }
-
-                WidgetsBinding.instance.addPostFrameCallback(
-                  (_) => _scrollToBottom(),
-                );
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final msg = messages[index];
-                    final senderId = msg['sender_id']?.toString() ?? '';
-                    final isMe = senderId == currentUserId;
-                    final content = msg['content'] ?? '';
-                    final messageType = msg['message_type'] ?? 'TEXT';
-                    final createdAt =
-                        DateTime.tryParse(msg['created_at'] ?? '') ??
-                        DateTime.now();
-                    final timeStr = _formatTime(createdAt);
-
-                    if (!isMe && senderId.isNotEmpty) {
-                      _fetchSenderName(senderId);
-                    }
-
-                    final senderName = _userCache[senderId] ?? 'Memuat...';
-
-                    return Align(
-                      alignment: isMe
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.75,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isMe
-                              ? Colors.blue.shade600
-                              : Colors.grey.shade200,
-                          borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(16),
-                            topRight: const Radius.circular(16),
-                            bottomLeft: Radius.circular(isMe ? 16 : 4),
-                            bottomRight: Radius.circular(isMe ? 4 : 16),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: isMe
-                              ? CrossAxisAlignment.end
-                              : CrossAxisAlignment.start,
-                          children: [
-                            if (!isMe) ...[
-                              Text(
-                                senderName,
-                                style: const TextStyle(
-                                  color: Color(0xFF6C63FF),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                            ],
-                            _buildMessageContent(content, messageType, isMe),
-                            const SizedBox(height: 4),
-                            Text(
-                              timeStr,
-                              style: TextStyle(
-                                color: isMe ? Colors.white70 : Colors.black54,
-                                fontSize: 10,
-                              ),
-                            ),
-                            if (isMe &&
-                                int.tryParse(msg['id']?.toString() ?? '') !=
-                                    null)
-                              _buildReadReceipt(
-                                int.parse(msg['id'].toString()),
-                              ),
-                          ],
-                        ),
+                  if (messages.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'Belum ada pesan. Mulai percakapan!',
+                        style: TextStyle(color: Colors.grey),
                       ),
                     );
-                  },
-                );
-              },
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 5,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.add_circle_outline,
-                      color: Colors.blue,
+                  }
+
+                  WidgetsBinding.instance.addPostFrameCallback(
+                    (_) => _scrollToBottom(),
+                  );
+
+                  return ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
                     ),
-                    onPressed: _isUploading ? null : _showAttachmentOptions,
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: 'Ketik pesan...',
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final msg = messages[index];
+                      final senderId = msg['sender_id']?.toString() ?? '';
+                      final isMe = senderId == currentUserId;
+                      final content = msg['content'] ?? '';
+                      final messageType = msg['message_type'] ?? 'TEXT';
+                      final createdAt =
+                          DateTime.tryParse(msg['created_at'] ?? '') ??
+                          DateTime.now();
+                      final timeStr = _formatTime(createdAt);
+
+                      if (!isMe && senderId.isNotEmpty) {
+                        _fetchSenderName(senderId);
+                      }
+
+                      final senderName = _userCache[senderId] ?? 'Memuat...';
+
+                      return Align(
+                        alignment: isMe
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          constraints: BoxConstraints(
+                            maxWidth: MediaQuery.of(context).size.width * 0.82,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: isMe
+                                ? const LinearGradient(
+                                    colors: [
+                                      ChatatanColors.primary,
+                                      ChatatanColors.secondary,
+                                    ],
+                                  )
+                                : LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Colors.white.withValues(alpha: .86),
+                                      const Color(
+                                        0xFFDDE7FF,
+                                      ).withValues(alpha: .56),
+                                    ],
+                                  ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: .86),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFF6678BE,
+                                ).withValues(alpha: .10),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: isMe
+                                ? CrossAxisAlignment.end
+                                : CrossAxisAlignment.start,
+                            children: [
+                              if (!isMe) ...[
+                                Text(
+                                  senderName,
+                                  style: const TextStyle(
+                                    color: Color(0xFF6C63FF),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                              ],
+                              _buildMessageContent(content, messageType, isMe),
+                              const SizedBox(height: 4),
+                              Text(
+                                timeStr,
+                                style: TextStyle(
+                                  color: isMe ? Colors.white70 : Colors.black54,
+                                  fontSize: 10,
+                                ),
+                              ),
+                              if (isMe &&
+                                  int.tryParse(msg['id']?.toString() ?? '') !=
+                                      null)
+                                _buildReadReceipt(
+                                  int.parse(msg['id'].toString()),
+                                ),
+                            ],
+                          ),
                         ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey.shade200,
-                      ),
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  CircleAvatar(
-                    backgroundColor: Colors.blue,
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.send,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      onPressed: _sendMessage,
-                    ),
-                  ),
-                ],
+                      );
+                    },
+                  );
+                },
               ),
             ),
-          ),
-        ],
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                child: ChatatanGlass(
+                  radius: 25,
+                  opacity: .76,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 7,
+                  ),
+                  child: Row(
+                    children: [
+                      ChatatanGlass(
+                        radius: 22,
+                        opacity: .60,
+                        padding: const EdgeInsets.all(10),
+                        onTap: _isUploading ? null : _showAttachmentOptions,
+                        child: const Icon(
+                          Icons.add_rounded,
+                          color: ChatatanColors.primary,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: TextField(
+                          controller: _messageController,
+                          textCapitalization: TextCapitalization.sentences,
+                          minLines: 1,
+                          maxLines: 4,
+                          decoration: InputDecoration(
+                            hintText: 'Ketik pesan...',
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 11,
+                            ),
+                            filled: true,
+                            fillColor: Colors.white.withValues(alpha: .54),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(22),
+                              borderSide: BorderSide(
+                                color: Colors.white.withValues(alpha: .78),
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(22),
+                              borderSide: BorderSide(
+                                color: Colors.white.withValues(alpha: .78),
+                              ),
+                            ),
+                          ),
+                          onSubmitted: (_) => _sendMessage(),
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      ChatatanGlass(
+                        radius: 22,
+                        opacity: .72,
+                        padding: const EdgeInsets.all(10),
+                        onTap: _sendMessage,
+                        child: const Icon(
+                          Icons.send_rounded,
+                          color: ChatatanColors.primary,
+                          size: 22,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

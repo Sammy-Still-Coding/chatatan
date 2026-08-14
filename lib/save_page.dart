@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'chatatan_theme.dart';
 import 'db_helper.dart';
 import 'forum_detail_page.dart';
 
@@ -78,13 +79,17 @@ class _SavedPageState extends State<SavedPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FF),
+      backgroundColor: ChatatanColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF1A1B3E), size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFF1A1B3E),
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -96,45 +101,61 @@ class _SavedPageState extends State<SavedPage> {
           ),
         ),
       ),
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _loadSavedPosts,
-                color: const Color(0xFF5B6CFF),
-                child: _savedPosts.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        itemCount: _savedPosts.length,
-                        itemBuilder: (context, index) {
-                          final item = _savedPosts[index];
-                          final post = item['forum_posts'] as Map<String, dynamic>?;
+      body: ChatatanAmbientBackground(
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _loadSavedPosts,
+                  color: const Color(0xFF5B6CFF),
+                  child: _savedPosts.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          itemCount: _savedPosts.length,
+                          itemBuilder: (context, index) {
+                            final item = _savedPosts[index];
+                            final post =
+                                item['forum_posts'] as Map<String, dynamic>?;
 
-                          if (post == null) return const SizedBox.shrink();
+                            if (post == null) return const SizedBox.shrink();
 
-                          final int postId = post['id'];
-                          final String title = post['title'] ?? 'Tanpa Judul';
-                          final String content = post['content'] ?? '';
-                          final String createdAt = _formatDate(post['created_at']);
+                            final int postId = post['id'];
+                            final String title = post['title'] ?? 'Tanpa Judul';
+                            final String content = post['content'] ?? '';
+                            final String createdAt = _formatDate(
+                              post['created_at'],
+                            );
 
-                          final user = post['users'] as Map<String, dynamic>?; // ✅ sesuaikan ke 'users'
-                          final String author = user?['username'] ?? user?['full_name'] ?? 'Pengguna';
-                          final String? avatarUrl = user?['avatar_url'];
+                            final user =
+                                post['users']
+                                    as Map<
+                                      String,
+                                      dynamic
+                                    >?; // ✅ sesuaikan ke 'users'
+                            final String author =
+                                user?['username'] ??
+                                user?['full_name'] ??
+                                'Pengguna';
+                            final String? avatarUrl = user?['avatar_url'];
 
-                          return _buildSavedCard(
-                            index: index,
-                            postId: postId,
-                            title: title,
-                            content: content,
-                            author: author,
-                            avatarUrl: avatarUrl,
-                            createdAt: createdAt,
-                            rawPost: post, // ✅ Tambahkan baris ini
-                          );
-                        },
-                      ),
-              ),
+                            return _buildSavedCard(
+                              index: index,
+                              postId: postId,
+                              title: title,
+                              content: content,
+                              author: author,
+                              avatarUrl: avatarUrl,
+                              createdAt: createdAt,
+                              rawPost: post, // ✅ Tambahkan baris ini
+                            );
+                          },
+                        ),
+                ),
+        ),
       ),
     );
   }
@@ -147,7 +168,8 @@ class _SavedPageState extends State<SavedPage> {
     required String author,
     required String? avatarUrl,
     required String createdAt,
-    required Map<String, dynamic> rawPost, // Kirim seluruh data post jika dibutuhkan
+    required Map<String, dynamic>
+    rawPost, // Kirim seluruh data post jika dibutuhkan
   }) {
     return GestureDetector(
       onTap: () {
@@ -155,105 +177,97 @@ class _SavedPageState extends State<SavedPage> {
           context,
           MaterialPageRoute(
             // Ganti nama parameter sesuai konstruktor di ForumDetailPage kamu
-            builder: (context) => ForumDetailPage(postId: postId), 
+            builder: (context) => ForumDetailPage(postId: postId),
           ),
         );
       },
-      child: Container(
+      child: ChatatanGlass(
         margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF5B6CFF).withOpacity(0.06),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: const Color(0xFF5B6CFF).withOpacity(0.1),
-                  backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
-                      ? NetworkImage(avatarUrl)
-                      : null,
-                  child: (avatarUrl == null || avatarUrl.isEmpty)
-                      ? Text(
-                          author.isNotEmpty ? author[0].toUpperCase() : 'U',
-                          style: const TextStyle(
-                            color: Color(0xFF5B6CFF),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        author,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1A1B3E),
-                        ),
-                      ),
-                      if (createdAt.isNotEmpty)
+        radius: 22,
+        opacity: .66,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: const Color(0xFF5B6CFF).withOpacity(0.1),
+                    backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
+                        ? NetworkImage(avatarUrl)
+                        : null,
+                    child: (avatarUrl == null || avatarUrl.isEmpty)
+                        ? Text(
+                            author.isNotEmpty ? author[0].toUpperCase() : 'U',
+                            style: const TextStyle(
+                              color: Color(0xFF5B6CFF),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          createdAt,
+                          author,
                           style: const TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF6B7280),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1A1B3E),
                           ),
                         ),
-                    ],
+                        if (createdAt.isNotEmpty)
+                          Text(
+                            createdAt,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF6B7280),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: const Icon(
-                    Icons.bookmark_remove_rounded,
-                    color: Color(0xFFFF5B5B),
-                    size: 22,
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(
+                      Icons.bookmark_remove_rounded,
+                      color: Color(0xFFFF5B5B),
+                      size: 22,
+                    ),
+                    tooltip: 'Hapus Bookmark',
+                    onPressed: () => _removeBookmark(postId, index),
                   ),
-                  tooltip: 'Hapus Bookmark',
-                  onPressed: () => _removeBookmark(postId, index),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1B3E),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1A1B3E),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              content,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF6B7280),
-                height: 1.4,
+              const SizedBox(height: 6),
+              Text(
+                content,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF6B7280),
+                  height: 1.4,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -263,7 +277,8 @@ class _SavedPageState extends State<SavedPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(), // Memungkinkan Pull-to-Refresh
+          physics:
+              const AlwaysScrollableScrollPhysics(), // Memungkinkan Pull-to-Refresh
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Center(

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'db_helper.dart';
 import 'privacy_security_page.dart';
 import 'login_page.dart';
 import 'save_page.dart';
 import 'notification_page.dart';
+import 'chatatan_theme.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -18,6 +20,23 @@ class _ProfilePageState extends State<ProfilePage> {
   final DbHelper _dbHelper = DbHelper();
   bool _isDarkMode = false;
   bool _isUploadingAvatar = false;
+
+  Future<void> _openHelpCenter() async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: 'chatatan.cjip@gmail.com',
+      queryParameters: {
+        'subject': 'Bantuan aplikasi ChaTatan',
+        'body': 'Halo tim ChaTatan,\n\nSaya membutuhkan bantuan mengenai: ',
+      },
+    );
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aplikasi email tidak ditemukan.')),
+      );
+    }
+  }
 
   // Menampilkan Modal Pilihan: Galeri atau Kamera
   void _showImagePickerOptions() {
@@ -116,98 +135,105 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FF),
-      body: SafeArea(
-        child: FutureBuilder<Map<String, dynamic>?>(
-          future: _dbHelper.getFullProfileData(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting &&
-                !_isUploadingAvatar) {
-              return const Center(child: CircularProgressIndicator());
-            }
+      backgroundColor: ChatatanColors.background,
+      body: ChatatanAmbientBackground(
+        child: SafeArea(
+          child: FutureBuilder<Map<String, dynamic>?>(
+            future: _dbHelper.getFullProfileData(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !_isUploadingAvatar) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-            if (!snapshot.hasData || snapshot.data == null) {
-              return const Center(child: Text('Gagal memuat data profil.'));
-            }
+              if (!snapshot.hasData || snapshot.data == null) {
+                return const Center(child: Text('Gagal memuat data profil.'));
+              }
 
-            final data = snapshot.data!;
-            final profile = data['profile'] ?? {};
-            final gamification = data['gamification'] ?? {};
+              final data = snapshot.data!;
+              final profile = data['profile'] ?? {};
+              final gamification = data['gamification'] ?? {};
 
-            final name =
-                profile['username'] ?? profile['full_name'] ?? 'Pengguna';
-            final university =
-                profile['university'] ?? 'Universitas Bina Nusantara';
-            final major = profile['major'] ?? 'Informatika';
-            final avatarUrl = profile['avatar_url'] as String?;
+              final name =
+                  profile['username'] ?? profile['full_name'] ?? 'Pengguna';
+              final university = profile['university']?.toString().trim() ?? '';
+              final major = profile['major']?.toString().trim() ?? '';
+              final avatarUrl = profile['avatar_url'] as String?;
 
-            final streak =
-                gamification['current_streak'] ??
-                gamification['streak_count'] ??
-                gamification['streak'] ??
-                0;
-            final tokens =
-                gamification['token_balance'] ?? gamification['tokens'] ?? 0;
-            final rank = gamification['rank'] != null
-                ? '#${gamification['rank']}'
-                : '-';
-            final totalNotes = data['total_notes'] ?? 0;
-            final discussions = data['total_discussions'] ?? 0;
-            final xpPoints =
-                gamification['total_points'] ??
-                gamification['xp_points'] ??
-                gamification['xp'] ??
-                0;
+              final streak =
+                  gamification['current_streak'] ??
+                  gamification['streak_count'] ??
+                  gamification['streak'] ??
+                  0;
+              final tokens =
+                  gamification['token_balance'] ?? gamification['tokens'] ?? 0;
+              final rank = gamification['rank'] != null
+                  ? '#${gamification['rank']}'
+                  : '-';
+              final totalNotes = data['total_notes'] ?? 0;
+              final discussions = data['total_discussions'] ?? 0;
+              final xpPoints =
+                  gamification['total_points'] ??
+                  gamification['xp_points'] ??
+                  gamification['xp'] ??
+                  0;
 
-            return SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeaderCard(
-                    name,
-                    university,
-                    major,
-                    avatarUrl,
-                    streak,
-                    tokens,
-                    rank,
-                  ),
-                  const SizedBox(height: 20),
-
-                  _buildStatSummary(totalNotes, discussions, xpPoints),
-                  const SizedBox(height: 24),
-
-                  const Text(
-                    '🏅 Achievements',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1B3E),
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeaderCard(
+                      name,
+                      university,
+                      major,
+                      avatarUrl,
+                      streak,
+                      tokens,
+                      rank,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildAchievementsGrid(data['achievements'] as List),
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 20),
 
-                  const Text(
-                    '⚙️ Settings',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1B3E),
+                    _buildStatSummary(totalNotes, discussions, xpPoints),
+                    const SizedBox(height: 24),
+
+                    const Text(
+                      '🏅 Achievements',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1A1B3E),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSettingsList(),
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 12),
+                    _buildLiveAchievements(
+                      streak: streak,
+                      totalNotes: totalNotes,
+                      discussions: discussions,
+                      xpPoints: xpPoints,
+                      rank: rank,
+                    ),
+                    const SizedBox(height: 24),
 
-                  _buildLogoutButton(),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            );
-          },
+                    const Text(
+                      '⚙️ Settings',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1A1B3E),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildSettingsList(),
+                    const SizedBox(height: 20),
+
+                    _buildLogoutButton(),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -222,130 +248,140 @@ class _ProfilePageState extends State<ProfilePage> {
     int tokens,
     String rank,
   ) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF5B6CFF), Color(0xFF8D6BFF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF5B6CFF).withOpacity(0.35),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+    final academicInfo = [
+      university,
+      major,
+    ].where((value) => value.isNotEmpty).join(' · ');
+
+    return ChatatanGlass(
+      radius: 30,
+      opacity: .70,
+      blur: 30,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF5B6CFF).withValues(alpha: .82),
+              const Color(0xFF9B73FF).withValues(alpha: .72),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
-      ),
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: _isUploadingAvatar ? null : _showImagePickerOptions,
-            child: Stack(
-              children: [
-                Container(
-                  width: 84,
-                  height: 84,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.25),
-                    border: Border.all(color: Colors.white, width: 3),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 12,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                    image: (avatarUrl != null && avatarUrl.isNotEmpty)
-                        ? DecorationImage(
-                            image: NetworkImage(avatarUrl),
-                            fit: BoxFit.cover,
+        ),
+        child: Column(
+          children: [
+            GestureDetector(
+              onTap: _isUploadingAvatar ? null : _showImagePickerOptions,
+              child: Stack(
+                children: [
+                  Container(
+                    width: 84,
+                    height: 84,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.25),
+                      border: Border.all(color: Colors.white, width: 3),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 12,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                      image: (avatarUrl != null && avatarUrl.isNotEmpty)
+                          ? DecorationImage(
+                              image: NetworkImage(avatarUrl),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                    ),
+                    child: _isUploadingAvatar
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                            ),
+                          )
+                        : (avatarUrl == null || avatarUrl.isEmpty)
+                        ? Center(
+                            child: Text(
+                              _getInitials(name),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
                           )
                         : null,
                   ),
-                  child: _isUploadingAvatar
-                      ? const Center(
-                          child: CircularProgressIndicator(color: Colors.white),
-                        )
-                      : (avatarUrl == null || avatarUrl.isEmpty)
-                      ? Center(
-                          child: Text(
-                            _getInitials(name),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 26,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        )
-                      : null,
-                ),
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: Colors.black12, blurRadius: 4),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.camera_alt_rounded,
-                      size: 14,
-                      color: Color(0xFF5B6CFF),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(color: Colors.black12, blurRadius: 4),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt_rounded,
+                        size: 14,
+                        color: Color(0xFF5B6CFF),
+                      ),
                     ),
                   ),
-                ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            if (academicInfo.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.school_outlined,
+                    size: 15,
+                    color: Colors.white.withOpacity(0.8),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      academicInfo,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 12,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildMiniStat('🔥', '$streak', 'Streak'),
+                _buildMiniStat('⭐', '$tokens', 'Tokens'),
+                _buildMiniStat('🏆', rank, 'Rank'),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.school_outlined,
-                size: 15,
-                color: Colors.white.withOpacity(0.8),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  '$university · $major',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 12,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildMiniStat('🔥', '$streak', 'Streak'),
-              _buildMiniStat('⭐', '$tokens', 'Tokens'),
-              _buildMiniStat('🏆', rank, 'Rank'),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -443,7 +479,14 @@ class _ProfilePageState extends State<ProfilePage> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.85),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: .82),
+            const Color(0xFFDDE7FF).withValues(alpha: .45),
+          ],
+        ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white),
         boxShadow: [
@@ -474,6 +517,172 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Widget _buildLiveAchievements({
+    required int streak,
+    required int totalNotes,
+    required int discussions,
+    required int xpPoints,
+    required String rank,
+  }) {
+    final rankNumber = int.tryParse(rank.replaceAll('#', '')) ?? 9999;
+    final achievements = <Map<String, dynamic>>[
+      {
+        'icon': Icons.local_fire_department_rounded,
+        'title': '7 Hari Konsisten',
+        'current': streak,
+        'target': 7,
+        'unit': 'hari streak',
+        'color': const Color(0xFFFF8A45),
+      },
+      {
+        'icon': Icons.library_books_rounded,
+        'title': 'Kolektor Catatan',
+        'current': totalNotes,
+        'target': 25,
+        'unit': 'file Library',
+        'color': ChatatanColors.primary,
+      },
+      {
+        'icon': Icons.forum_rounded,
+        'title': 'Kontributor Forum',
+        'current': discussions,
+        'target': 5,
+        'unit': 'diskusi',
+        'color': const Color(0xFF31BFA3),
+      },
+      {
+        'icon': Icons.auto_awesome_rounded,
+        'title': 'Pembelajar Aktif',
+        'current': xpPoints,
+        'target': 500,
+        'unit': 'EXP',
+        'color': const Color(0xFF8D6BFF),
+      },
+      {
+        'icon': Icons.emoji_events_rounded,
+        'title': 'Peringkat EXP',
+        'current': rankNumber <= 3 ? 1 : 0,
+        'target': 1,
+        'unit': rankNumber == 9999
+            ? 'belum berperingkat'
+            : (rankNumber <= 3
+                  ? 'Top 3 · #$rankNumber'
+                  : 'peringkat #$rankNumber'),
+        'color': const Color(0xFFF5B51B),
+      },
+      {
+        'icon': Icons.workspace_premium_rounded,
+        'title': 'Streak Master',
+        'current': streak,
+        'target': 30,
+        'unit': 'hari streak',
+        'color': const Color(0xFF4B9EFF),
+      },
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: achievements.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 1.22,
+      ),
+      itemBuilder: (context, index) {
+        final item = achievements[index];
+        final current = item['current'] as int;
+        final target = item['target'] as int;
+        final unlocked = current >= target;
+        final progress = (current / target).clamp(0.0, 1.0);
+        final color = item['color'] as Color;
+        return ChatatanGlass(
+          radius: 22,
+          opacity: unlocked ? .72 : .50,
+          onTap: () {
+            final message = unlocked
+                ? '${item['title']} sudah terbuka!'
+                : '$current/$target ${item['unit']} untuk membuka achievement ini.';
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(message)));
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(13),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: unlocked ? .18 : .09),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        item['icon'] as IconData,
+                        color: unlocked ? color : ChatatanColors.muted,
+                        size: 21,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      unlocked
+                          ? Icons.check_circle_rounded
+                          : Icons.lock_rounded,
+                      color: unlocked
+                          ? ChatatanColors.success
+                          : ChatatanColors.muted,
+                      size: 18,
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Text(
+                  item['title'] as String,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: ChatatanColors.muted.withValues(
+                      alpha: .12,
+                    ),
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  unlocked ? 'Terbuka' : '$current/$target ${item['unit']}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: ChatatanColors.muted,
+                    fontSize: 9,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Kept as a compatibility renderer for achievement rows returned by older
+  // database migrations. The live grid above is used by the current profile.
+  // ignore: unused_element
   Widget _buildAchievementsGrid(List achievementsFromDb) {
     final defaultAchievements = [
       {
@@ -596,7 +805,14 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildSettingsList() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.85),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: .82),
+            const Color(0xFFDDE7FF).withValues(alpha: .45),
+          ],
+        ),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Colors.white),
         boxShadow: [
@@ -688,7 +904,7 @@ class _ProfilePageState extends State<ProfilePage> {
               color: Color(0xFF6B7280),
               size: 20,
             ),
-            onTap: () {},
+            onTap: _openHelpCenter,
           ),
         ],
       ),

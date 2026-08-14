@@ -205,7 +205,13 @@ class DbHelper {
     final profile = await getMyProfile();
 
     // 2. Ambil Data Gamification (Streak, Tokens, XP, Rank)
-    final gamification = await getMyGamification();
+    final rawGamification = await getMyGamification();
+    final gamification = <String, dynamic>{...?rawGamification};
+    try {
+      gamification['rank'] = await getMyExpRank();
+    } catch (_) {
+      // Tetap tampilkan profil saat migration leaderboard belum diterapkan.
+    }
 
     // 3. Hitung Jumlah Total Notes dari Library
     int totalNotes = 0;
@@ -322,6 +328,11 @@ class DbHelper {
   Future<Map<String, dynamic>> claimLearningStreak() async =>
       Map<String, dynamic>.from(await _client.rpc('claim_learning_streak'));
 
+  Future<Map<String, dynamic>> claimActivePetDailyExp() async =>
+      Map<String, dynamic>.from(
+        await _client.rpc('claim_active_pet_daily_exp'),
+      );
+
   // ============================================================
   // HOME DATA
   // ============================================================
@@ -334,6 +345,39 @@ class DbHelper {
     final pet = await getMyPet();
 
     return {'profile': profile, 'gamification': gamification, 'pet': pet};
+  }
+
+  Future<List<Map<String, dynamic>>> getExpLeaderboard({int limit = 3}) async {
+    final response = await _client.rpc(
+      'get_exp_leaderboard',
+      params: {'p_limit': limit},
+    );
+    return List<Map<String, dynamic>>.from(response as List);
+  }
+
+  Future<int?> getMyExpRank() async {
+    final response = await _client.rpc('get_my_exp_rank');
+    return int.tryParse(response?.toString() ?? '');
+  }
+
+  Future<Set<int>> getMyLikedForumReplies(int postId) async {
+    final response = await _client.rpc(
+      'get_my_liked_forum_replies',
+      params: {'p_post_id': postId},
+    );
+    return (response as List)
+        .map((row) => int.tryParse(row['reply_id'].toString()))
+        .whereType<int>()
+        .toSet();
+  }
+
+  Future<Map<String, dynamic>> toggleForumReplyLike(int replyId) async {
+    return Map<String, dynamic>.from(
+      await _client.rpc(
+        'toggle_forum_reply_like',
+        params: {'p_reply_id': replyId},
+      ),
+    );
   }
 
   // ============================================================
@@ -895,6 +939,9 @@ class DbHelper {
           like_count,
           dislike_count,
           reply_count,
+          forum_categories:category_id (name),
+          users:user_id (username, full_name, avatar_url),
+          forum_attachments (id),
           created_at
         ''')
         .order('created_at', ascending: false)
@@ -1827,7 +1874,13 @@ class DbHelper {
 
     // Format data untuk batch insert ke conversation_members
     final membersData = allMemberIds
-        .map((userId) => {'conversation_id': conversationId, 'user_id': userId})
+        .map(
+          (userId) => {
+            'conversation_id': conversationId,
+            'user_id': userId,
+            'role': userId == user.id ? 'ADMIN' : 'MEMBER',
+          },
+        )
         .toList();
 
     await _client.from('conversation_members').insert(membersData);
@@ -1846,6 +1899,8 @@ class DbHelper {
           conversation:conversations!inner (
             id,
             title,
+            avatar_url,
+            created_by,
             conversation_type,
             created_at,
             updated_at,
@@ -1963,9 +2018,56 @@ class DbHelper {
   Future<Map<String, dynamic>?> getConversation(int conversationId) async {
     return await _client
         .from('conversations')
-        .select('id, title, conversation_type')
+        .select('id, title, conversation_type, created_by, avatar_url')
         .eq('id', conversationId)
         .maybeSingle();
+  }
+
+  Future<String> uploadGroupAvatar(int conversationId, XFile image) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+    final bytes = await image.readAsBytes();
+    var extension = image.name.contains('.')
+        ? image.name.split('.').last.toLowerCase()
+        : 'jpg';
+    if (extension == 'jpeg') extension = 'jpg';
+    final storagePath =
+        '${user.id}/groups/group_${conversationId}_${const Uuid().v4()}.$extension';
+    await _client.storage
+        .from('avatars')
+        .uploadBinary(
+          storagePath,
+          bytes,
+          fileOptions: FileOptions(
+            contentType: _getMimeType(extension),
+            upsert: true,
+          ),
+        );
+    final avatarUrl = _client.storage.from('avatars').getPublicUrl(storagePath);
+    await _client.rpc(
+      'update_group_profile',
+      params: {
+        'p_conversation_id': conversationId,
+        'p_title': null,
+        'p_avatar_url': avatarUrl,
+      },
+    );
+    return avatarUrl;
+  }
+
+  Future<void> setGroupMemberAdmin({
+    required int conversationId,
+    required String userId,
+    required bool isAdmin,
+  }) async {
+    await _client.rpc(
+      'set_group_member_role',
+      params: {
+        'p_conversation_id': conversationId,
+        'p_user_id': userId,
+        'p_role': isAdmin ? 'ADMIN' : 'MEMBER',
+      },
+    );
   }
 
   // ------------------------------------------------------------

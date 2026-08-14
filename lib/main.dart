@@ -1,8 +1,10 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'firebase_options.dart';
+import 'chatatan_theme.dart';
 import 'login_page.dart';
 import 'main_navigation.dart';
 
@@ -18,6 +20,16 @@ Future<void> main() async {
     publishableKey: 'sb_publishable_2RhYu4hdkHZOYwdaOYmHdg_W_YGMq87',
   );
 
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0xFFF0F5FF),
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
+
   runApp(const ChatatanApp());
 }
 
@@ -31,7 +43,7 @@ class ChatatanApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'ChaTatan',
 
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.deepPurple),
+      theme: buildChatatanTheme(),
 
       home: Supabase.instance.client.auth.currentSession != null
           ? const MainNavigation()

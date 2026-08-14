@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'db_helper.dart';
+import 'chatatan_theme.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
@@ -77,76 +78,81 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: ChatatanColors.background,
     appBar: AppBar(title: const Text('Pengaturan Notifikasi')),
-    body: _loading
-        ? const Center(child: CircularProgressIndicator())
-        : ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              const Text(
-                'Notifikasi perangkat',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Riwayat notifikasi tetap tersedia di aplikasi.',
-                style: TextStyle(color: Color(0xFF6B7280)),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: SwitchListTile(
-                  secondary: const Icon(Icons.notifications_active_outlined),
-                  title: const Text('Izinkan push notification'),
-                  value: _master,
-                  onChanged: (value) => _toggle('master', value),
+    body: ChatatanAmbientBackground(
+      child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                const Text(
+                  'Notifikasi perangkat',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Jenis notifikasi',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 8),
-              Card(
-                child: Column(
-                  children: [
-                    SwitchListTile(
-                      secondary: const Icon(Icons.chat_bubble_outline_rounded),
-                      title: const Text('Pesan pribadi'),
-                      subtitle: const Text(
-                        'Saat seseorang mengirim chat langsung',
-                      ),
-                      value: _private,
-                      onChanged: _master
-                          ? (value) => _toggle('private', value)
-                          : null,
-                    ),
-                    const Divider(height: 1),
-                    SwitchListTile(
-                      secondary: const Icon(Icons.groups_outlined),
-                      title: const Text('Pesan grup'),
-                      subtitle: const Text('Saat ada pesan baru di grup'),
-                      value: _group,
-                      onChanged: _master
-                          ? (value) => _toggle('group', value)
-                          : null,
-                    ),
-                    const Divider(height: 1),
-                    SwitchListTile(
-                      secondary: const Icon(Icons.forum_outlined),
-                      title: const Text('Balasan forum'),
-                      subtitle: const Text(
-                        'Saat diskusi Anda mendapat balasan',
-                      ),
-                      value: _forum,
-                      onChanged: _master
-                          ? (value) => _toggle('forum', value)
-                          : null,
-                    ),
-                  ],
+                const SizedBox(height: 6),
+                const Text(
+                  'Riwayat notifikasi tetap tersedia di aplikasi.',
+                  style: TextStyle(color: Color(0xFF6B7280)),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(height: 12),
+                Card(
+                  child: SwitchListTile(
+                    secondary: const Icon(Icons.notifications_active_outlined),
+                    title: const Text('Izinkan push notification'),
+                    value: _master,
+                    onChanged: (value) => _toggle('master', value),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Jenis notifikasi',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        secondary: const Icon(
+                          Icons.chat_bubble_outline_rounded,
+                        ),
+                        title: const Text('Pesan pribadi'),
+                        subtitle: const Text(
+                          'Saat seseorang mengirim chat langsung',
+                        ),
+                        value: _private,
+                        onChanged: _master
+                            ? (value) => _toggle('private', value)
+                            : null,
+                      ),
+                      const Divider(height: 1),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.groups_outlined),
+                        title: const Text('Pesan grup'),
+                        subtitle: const Text('Saat ada pesan baru di grup'),
+                        value: _group,
+                        onChanged: _master
+                            ? (value) => _toggle('group', value)
+                            : null,
+                      ),
+                      const Divider(height: 1),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.forum_outlined),
+                        title: const Text('Balasan forum'),
+                        subtitle: const Text(
+                          'Saat diskusi Anda mendapat balasan',
+                        ),
+                        value: _forum,
+                        onChanged: _master
+                            ? (value) => _toggle('forum', value)
+                            : null,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    ),
   );
 }

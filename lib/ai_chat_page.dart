@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'attachment_preview.dart';
 import 'library_attachment_picker.dart';
 import 'db_helper.dart';
+import 'chatatan_theme.dart';
 
 class AiChatPage extends StatefulWidget {
   const AiChatPage({super.key});
@@ -254,123 +255,175 @@ class _AiChatPageState extends State<AiChatPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: ChatatanColors.background,
     appBar: AppBar(title: const Text('ChaTatan AI')),
-    body: Column(
-      children: [
-        _buildTokenBar(),
-        Expanded(
-          child: _loadingHistory
-              ? const Center(child: CircularProgressIndicator())
-              : _messages.isEmpty
-              ? const Center(
-                  child: Text(
-                    'Tanyakan materi, atau kirim gambar/dokumen untuk dibahas.',
-                  ),
-                )
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _messages.length,
-                  itemBuilder: (_, index) {
-                    final message = _messages[index];
-                    final mine = message['role'] == 'user';
-                    final url = message['url']?.toString() ?? '';
-                    final file = message['file']?.toString() ?? '';
-                    return Align(
-                      alignment: mine
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.sizeOf(context).width * .78,
-                        ),
-                        decoration: BoxDecoration(
-                          color: mine ? const Color(0xFF6C63FF) : Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (url.isNotEmpty) ...[
-                              AttachmentPreviewTile(
-                                url: url,
-                                name: file,
-                                dark: mine,
-                              ),
-                              const SizedBox(height: 8),
-                            ],
-                            mine
-                                ? Text(
-                                    message['content']?.toString() ?? '',
-                                    style: const TextStyle(color: Colors.white),
-                                  )
-                                : MarkdownBody(
-                                    data: message['content']?.toString() ?? '',
-                                    selectable: true,
-                                    styleSheet:
-                                        MarkdownStyleSheet.fromTheme(
-                                          Theme.of(context),
-                                        ).copyWith(
-                                          p: const TextStyle(
-                                            color: Colors.black87,
-                                            height: 1.35,
-                                          ),
-                                          strong: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                  ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-        if (_attachment != null)
-          ListTile(
-            leading: Icon(
-              _attachment!.isImage ? Icons.image_outlined : Icons.attach_file,
-            ),
-            title: Text(_attachment!.title),
-            subtitle: Text('Biaya pesan ini: $_tokenCost token'),
-            trailing: IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () => setState(() => _attachment = null),
-            ),
-          ),
-        if (_loading) const LinearProgressIndicator(),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: _loading ? null : _pickAttachment,
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    minLines: 1,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText: 'Tanyakan sesuatu...',
-                      border: OutlineInputBorder(),
+    body: ChatatanAmbientBackground(
+      child: Column(
+        children: [
+          Expanded(
+            child: _loadingHistory
+                ? const Center(child: CircularProgressIndicator())
+                : _messages.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Tanyakan materi, atau kirim gambar/dokumen untuk dibahas.',
                     ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _messages.length,
+                    itemBuilder: (_, index) {
+                      final message = _messages[index];
+                      final mine = message['role'] == 'user';
+                      final url = message['url']?.toString() ?? '';
+                      final file = message['file']?.toString() ?? '';
+                      return Align(
+                        alignment: mine
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          constraints: BoxConstraints(
+                            maxWidth:
+                                MediaQuery.sizeOf(context).width *
+                                (mine ? .78 : .92),
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: mine
+                                ? const LinearGradient(
+                                    colors: [
+                                      ChatatanColors.primary,
+                                      ChatatanColors.secondary,
+                                    ],
+                                  )
+                                : LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Colors.white.withValues(alpha: .84),
+                                      const Color(
+                                        0xFFDDE7FF,
+                                      ).withValues(alpha: .52),
+                                    ],
+                                  ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: .84),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFF6678BE,
+                                ).withValues(alpha: .09),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (url.isNotEmpty) ...[
+                                AttachmentPreviewTile(
+                                  url: url,
+                                  name: file,
+                                  dark: mine,
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                              mine
+                                  ? Text(
+                                      message['content']?.toString() ?? '',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : MarkdownBody(
+                                      data:
+                                          message['content']?.toString() ?? '',
+                                      selectable: true,
+                                      styleSheet:
+                                          MarkdownStyleSheet.fromTheme(
+                                            Theme.of(context),
+                                          ).copyWith(
+                                            p: const TextStyle(
+                                              color: Colors.black87,
+                                              height: 1.35,
+                                            ),
+                                            strong: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                    ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
+          ),
+          if (_attachment != null)
+            ListTile(
+              leading: Icon(
+                _attachment!.isImage ? Icons.image_outlined : Icons.attach_file,
+              ),
+              title: Text(_attachment!.title),
+              subtitle: Text('Biaya pesan ini: $_tokenCost token'),
+              trailing: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => setState(() => _attachment = null),
+              ),
+            ),
+          if (_loading) const LinearProgressIndicator(),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+              child: ChatatanGlass(
+                radius: 24,
+                opacity: .76,
+                padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTokenBar(),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Pilih dari Library',
+                          icon: const Icon(Icons.add_circle_outline),
+                          onPressed: _loading ? null : _pickAttachment,
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            minLines: 1,
+                            maxLines: 4,
+                            decoration: const InputDecoration(
+                              hintText: 'Tanyakan sesuatu...',
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Kirim',
+                          icon: const Icon(
+                            Icons.send_rounded,
+                            color: Color(0xFF6C63FF),
+                          ),
+                          onPressed: _send,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.send, color: Color(0xFF6C63FF)),
-                  onPressed: _send,
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     ),
   );
 
@@ -378,22 +431,18 @@ class _AiChatPageState extends State<AiChatPage> {
     final balance = _tokenStatus?['balance']?.toString() ?? '--';
     final capacity = _tokenStatus?['weekly_capacity']?.toString() ?? '100';
     final streak = _tokenStatus?['streak']?.toString() ?? '0';
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEEEAFE),
-        borderRadius: BorderRadius.circular(12),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
       child: Row(
         children: [
-          const Icon(Icons.token_rounded, color: Color(0xFF6C63FF)),
+          const Icon(Icons.token_rounded, color: Color(0xFF6C63FF), size: 19),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               '$balance / $capacity token · isi ulang mingguan',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
             ),
           ),
           PopupMenuButton<String>(
@@ -415,7 +464,33 @@ class _AiChatPageState extends State<AiChatPage> {
                 ),
               ),
             ],
-            child: Chip(label: Text(_model == 'advanced' ? 'Pro' : 'Standard')),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECE9FF).withValues(alpha: .82),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withValues(alpha: .8)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _model == 'advanced' ? 'Pro' : 'Standard',
+                    style: const TextStyle(
+                      color: ChatatanColors.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  const Icon(
+                    Icons.expand_more_rounded,
+                    color: ChatatanColors.primary,
+                    size: 16,
+                  ),
+                ],
+              ),
+            ),
           ),
           if (int.tryParse(streak) != null && int.parse(streak) < 100)
             const SizedBox(width: 2),

@@ -1,7 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'chatatan_theme.dart';
 import 'db_helper.dart';
 import 'main_navigation.dart';
+import 'password_recovery_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -10,18 +15,30 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<LoginPage>
+    with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _usernameController = TextEditingController();
-
   final _dbHelper = DbHelper();
 
   bool _isLoading = false;
   bool _isRegister = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  late final AnimationController _authTabController;
+  late Animation<double> _authTabAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _authTabController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+    _authTabAnimation = const AlwaysStoppedAnimation(0);
+  }
 
   Future<void> _submit() async {
     final email = _emailController.text.trim();
@@ -33,12 +50,10 @@ class _LoginPageState extends State<LoginPage> {
       _showMessage('Email dan password wajib diisi.', isError: true);
       return;
     }
-
     if (_isRegister && username.isEmpty) {
       _showMessage('Username wajib diisi.', isError: true);
       return;
     }
-
     if (_isRegister && !RegExp(r'^[a-zA-Z0-9_]{3,24}$').hasMatch(username)) {
       _showMessage(
         'Username harus 3–24 karakter dan hanya boleh huruf, angka, atau underscore.',
@@ -46,88 +61,66 @@ class _LoginPageState extends State<LoginPage> {
       );
       return;
     }
-
     if (password.length < 6) {
       _showMessage('Password minimal 6 karakter.', isError: true);
       return;
     }
-
     if (_isRegister && password != confirmPassword) {
       _showMessage('Konfirmasi password belum sama.', isError: true);
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
     try {
       if (_isRegister) {
-        // ==========================
-        // REGISTER
-        // ==========================
-
         final response = await _dbHelper.signUp(
           email: email,
           password: password,
           username: username,
         );
-
         if (!mounted) return;
-
         if (response.user != null) {
           _showMessage('Akun berhasil dibuat!');
-
-          // Kalau email confirmation aktif,
-          // user belum tentu langsung login.
           if (response.session != null) {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => const MainNavigation()),
             );
           } else {
-            setState(() {
-              _isRegister = false;
-            });
-
+            final from = _authTabAnimation.value;
+            setState(() => _isRegister = false);
+            _authTabAnimation = Tween<double>(begin: from, end: 0).animate(
+              CurvedAnimation(
+                parent: _authTabController,
+                curve: Curves.easeOutCubic,
+              ),
+            );
+            _authTabController.forward(from: 0);
             _showMessage('Akun dibuat. Silakan cek email untuk verifikasi.');
           }
         }
       } else {
-        // ==========================
-        // LOGIN
-        // ==========================
-
         final response = await _dbHelper.signIn(
           email: email,
           password: password,
         );
-
         if (!mounted) return;
-
         if (response.user != null) {
           _showMessage('Login berhasil!');
-
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => const MainNavigation()),
           );
         }
       }
-    } on AuthException catch (e) {
-      if (!mounted) return;
-
-      _showMessage(e.message, isError: true);
-    } catch (e) {
-      if (!mounted) return;
-
-      _showMessage('Terjadi kesalahan: $e', isError: true);
-    } finally {
+    } on AuthException catch (error) {
+      if (mounted) _showMessage(error.message, isError: true);
+    } catch (error) {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        _showMessage('Terjadi kesalahan: $error', isError: true);
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -141,229 +134,250 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _toggleMode() {
-    setState(() {
-      _isRegister = !_isRegister;
-    });
+    final target = _isRegister ? 0.0 : 1.0;
+    final from = _authTabAnimation.value;
+    setState(() => _isRegister = !_isRegister);
+    _authTabAnimation = Tween<double>(begin: from, end: target).animate(
+      CurvedAnimation(parent: _authTabController, curve: Curves.easeOutCubic),
+    );
+    _authTabController.forward(from: 0);
   }
 
   @override
   void dispose() {
+    _authTabController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _usernameController.dispose();
-
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FB),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 430),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // LOGO
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: const Icon(
-                      Icons.auto_awesome,
-                      color: Colors.white,
-                      size: 40,
-                    ),
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  Text(
-                    _isRegister ? 'Buat akun baru' : 'Selamat datang kembali!',
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  Text(
-                    _isRegister
-                        ? 'Daftar untuk mulai menggunakan ChaTatan.'
-                        : 'Masuk untuk melanjutkan ke ChaTatan.',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // USERNAME
-                  if (_isRegister) ...[
-                    TextField(
-                      controller: _usernameController,
-                      textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
-                        labelText: 'Username',
-                        hintText: 'Contoh: samuel',
-                        prefixIcon: const Icon(Icons.person_outline),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-                  ],
-
-                  // EMAIL
-                  TextField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'Email',
-                      hintText: 'nama@email.com',
-                      prefixIcon: const Icon(Icons.email_outlined),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // PASSWORD
-                  TextField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _submit(),
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      hintText: 'Minimal 6 karakter',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                        ),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-
-                  if (_isRegister) ...[
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _confirmPasswordController,
-                      obscureText: _obscureConfirmPassword,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _submit(),
-                      decoration: InputDecoration(
-                        labelText: 'Ulangi password',
-                        hintText: 'Masukkan password yang sama',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        suffixIcon: IconButton(
-                          onPressed: () => setState(
-                            () => _obscureConfirmPassword =
-                                !_obscureConfirmPassword,
+      backgroundColor: ChatatanColors.background,
+      body: ChatatanAmbientBackground(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(22, 24, 22, 28),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Column(
+                  children: [
+                    ChatatanGlass(
+                      radius: 34,
+                      opacity: .68,
+                      blur: 28,
+                      padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
+                      child: Column(
+                        children: [
+                          SizedBox(
+                            width: 116,
+                            height: 116,
+                            child: Image.asset(
+                              'assets/images/Logo ChaTatan Transparant.png',
+                              fit: BoxFit.contain,
+                            ),
                           ),
-                          icon: Icon(
-                            _obscureConfirmPassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
+                          const SizedBox(height: 14),
+                          const Text(
+                            'ChaTatan',
+                            style: TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -.5,
+                            ),
                           ),
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _isRegister
+                                ? 'Buat ruang belajar milikmu.'
+                                : 'Catat, belajar, dan tumbuh bersama.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: ChatatanColors.muted,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-
-                  const SizedBox(height: 24),
-
-                  // BUTTON
-                  SizedBox(
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepPurple,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Colors.white,
+                    const SizedBox(height: 18),
+                    ChatatanGlass(
+                      radius: 30,
+                      opacity: .66,
+                      blur: 26,
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildAuthSwitcher(),
+                          const SizedBox(height: 21),
+                          Text(
+                            _isRegister
+                                ? 'Buat akun baru'
+                                : 'Selamat datang kembali',
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            _isRegister
+                                ? 'Isi data berikut untuk bergabung.'
+                                : 'Masuk untuk melanjutkan aktivitasmu.',
+                            style: const TextStyle(
+                              color: ChatatanColors.muted,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                          const SizedBox(height: 19),
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 260),
+                            curve: Curves.easeOutCubic,
+                            child: Column(
+                              children: [
+                                if (_isRegister) ...[
+                                  _authField(
+                                    controller: _usernameController,
+                                    label: 'Username',
+                                    hint: 'Contoh: samuel',
+                                    icon: Icons.person_outline_rounded,
+                                  ),
+                                  const SizedBox(height: 13),
+                                ],
+                                _authField(
+                                  controller: _emailController,
+                                  label: 'Email',
+                                  hint: 'nama@email.com',
+                                  icon: Icons.alternate_email_rounded,
+                                  keyboardType: TextInputType.emailAddress,
+                                ),
+                                const SizedBox(height: 13),
+                                _authField(
+                                  controller: _passwordController,
+                                  label: 'Password',
+                                  hint: 'Minimal 6 karakter',
+                                  icon: Icons.lock_outline_rounded,
+                                  obscureText: _obscurePassword,
+                                  onSubmitted: _isRegister
+                                      ? null
+                                      : (_) => _submit(),
+                                  suffix: IconButton(
+                                    onPressed: () => setState(
+                                      () =>
+                                          _obscurePassword = !_obscurePassword,
+                                    ),
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
+                                    ),
+                                  ),
+                                ),
+                                if (_isRegister) ...[
+                                  const SizedBox(height: 13),
+                                  _authField(
+                                    controller: _confirmPasswordController,
+                                    label: 'Ulangi password',
+                                    hint: 'Masukkan password yang sama',
+                                    icon: Icons.verified_user_outlined,
+                                    obscureText: _obscureConfirmPassword,
+                                    onSubmitted: (_) => _submit(),
+                                    suffix: IconButton(
+                                      onPressed: () => setState(
+                                        () => _obscureConfirmPassword =
+                                            !_obscureConfirmPassword,
+                                      ),
+                                      icon: Icon(
+                                        _obscureConfirmPassword
+                                            ? Icons.visibility_outlined
+                                            : Icons.visibility_off_outlined,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (!_isRegister)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const PasswordRecoveryPage(),
+                                  ),
+                                ),
+                                child: const Text('Lupa password?'),
                               ),
                             )
-                          : Text(
-                              _isRegister ? 'BUAT AKUN' : 'MASUK',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
+                          else
+                            const SizedBox(height: 18),
+                          SizedBox(
+                            height: 54,
+                            child: FilledButton(
+                              onPressed: _isLoading ? null : _submit,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: ChatatanColors.primary,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
                               ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 23,
+                                      height: 23,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.4,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          _isRegister ? 'Buat akun' : 'Masuk',
+                                          style: const TextStyle(fontSize: 16),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Icon(
+                                          Icons.arrow_forward_rounded,
+                                          size: 20,
+                                        ),
+                                      ],
+                                    ),
                             ),
+                          ),
+                          const SizedBox(height: 13),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                _isRegister
+                                    ? 'Sudah punya akun?'
+                                    : 'Belum punya akun?',
+                                style: const TextStyle(
+                                  color: ChatatanColors.muted,
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _isLoading ? null : _toggleMode,
+                                child: Text(_isRegister ? 'Masuk' : 'Daftar'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // SWITCH LOGIN / REGISTER
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        _isRegister ? 'Sudah punya akun?' : 'Belum punya akun?',
-                        style: TextStyle(color: Colors.grey.shade600),
-                      ),
-
-                      TextButton(
-                        onPressed: _isLoading ? null : _toggleMode,
-                        child: Text(
-                          _isRegister ? 'Masuk' : 'Daftar',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -371,4 +385,113 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+
+  Widget _buildAuthSwitcher() => Container(
+    height: 58,
+    padding: const EdgeInsets.all(5),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .34),
+      borderRadius: BorderRadius.circular(28),
+      border: Border.all(color: Colors.white.withValues(alpha: .84)),
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final segmentWidth = constraints.maxWidth / 2;
+        const switcherHeight = 48.0;
+        return Stack(
+          children: [
+            AnimatedBuilder(
+              animation: _authTabController,
+              builder: (context, _) {
+                final t = _authTabController.value.clamp(0.0, 1.0);
+                final stretch = math.sin(math.pi * t);
+                final centerX = segmentWidth * (_authTabAnimation.value + .5);
+                final bubbleWidth = segmentWidth * .94 + (22 * stretch);
+                final bubbleHeight = switcherHeight * .86 - (8 * stretch);
+                return Positioned(
+                  left: centerX - bubbleWidth / 2,
+                  top: (switcherHeight - bubbleHeight) / 2,
+                  width: bubbleWidth,
+                  height: bubbleHeight,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(bubbleHeight / 2),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          const Color(0xFF7168F6).withValues(alpha: .76),
+                          const Color(0xFF9D8AF5).withValues(alpha: .58),
+                        ],
+                      ),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .56),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: ChatatanColors.primary.withValues(alpha: .18),
+                          blurRadius: 14,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            Row(
+              children: List.generate(2, (index) {
+                final selected = (_isRegister ? 1 : 0) == index;
+                final label = index == 0 ? 'Masuk' : 'Daftar';
+                return Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: _isLoading || selected ? null : _toggleMode,
+                    child: Center(
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 240),
+                        style: TextStyle(
+                          color: selected ? Colors.white : ChatatanColors.muted,
+                          fontWeight: selected
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                        child: Text(label),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+
+  Widget _authField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    TextInputType? keyboardType,
+    bool obscureText = false,
+    Widget? suffix,
+    ValueChanged<String>? onSubmitted,
+  }) => TextField(
+    controller: controller,
+    keyboardType: keyboardType,
+    obscureText: obscureText,
+    textInputAction: onSubmitted == null
+        ? TextInputAction.next
+        : TextInputAction.done,
+    onSubmitted: onSubmitted,
+    decoration: InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: Icon(icon),
+      suffixIcon: suffix,
+      fillColor: Colors.white.withValues(alpha: .57),
+    ),
+  );
 }

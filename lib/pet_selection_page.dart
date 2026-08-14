@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'db_helper.dart';
 import 'pet_roadmap_page.dart';
+import 'chatatan_theme.dart';
 
 class PetSelectionPage extends StatefulWidget {
   const PetSelectionPage({super.key});
@@ -20,6 +21,7 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: ChatatanColors.background,
     appBar: AppBar(
       title: const Text('Pilih Pet'),
       actions: [
@@ -33,68 +35,103 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
         ),
       ],
     ),
-    body: FutureBuilder<Map<String, dynamic>>(
-      future: _data,
-      builder: (_, snapshot) {
-        if (!snapshot.hasData)
-          return const Center(child: CircularProgressIndicator());
-        final game = snapshot.data!['game'] as Map<String, dynamic>;
-        final pets = snapshot.data!['pets'] as List<Map<String, dynamic>>;
-        final streak = [game['current_streak'], game['longest_streak']]
-            .map((item) => int.tryParse('$item') ?? 0)
-            .reduce((a, b) => a > b ? a : b);
-        final active = game['pet_id']?.toString();
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              'Pilih teman belajarmu',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            Text(
-              'Streak terbaik: $streak hari',
-              style: const TextStyle(color: Colors.black54),
-            ),
-            const SizedBox(height: 12),
-            ...pets.map((pet) {
-              final minimum = int.tryParse('${pet['min_streak']}') ?? 0;
-              final unlocked = streak >= minimum;
-              final isActive = active == pet['id']?.toString();
-              return Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: unlocked
-                        ? const Color(0xFFEEEAFE)
-                        : Colors.grey.shade200,
-                    child: Icon(
-                      unlocked ? Icons.pets_rounded : Icons.lock_outline,
-                      color: unlocked ? const Color(0xFF6C63FF) : Colors.grey,
+    body: ChatatanAmbientBackground(
+      child: FutureBuilder<Map<String, dynamic>>(
+        future: _data,
+        builder: (_, snapshot) {
+          if (!snapshot.hasData)
+            return const Center(child: CircularProgressIndicator());
+          final game = snapshot.data!['game'] as Map<String, dynamic>;
+          final pets = snapshot.data!['pets'] as List<Map<String, dynamic>>;
+          final streak = [game['current_streak'], game['longest_streak']]
+              .map((item) => int.tryParse('$item') ?? 0)
+              .reduce((a, b) => a > b ? a : b);
+          final active = game['pet_id']?.toString();
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                'Pilih teman belajarmu',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                'Streak terbaik: $streak hari',
+                style: const TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 12),
+              ...pets.map((pet) {
+                final minimum = int.tryParse('${pet['min_streak']}') ?? 0;
+                final unlocked = streak >= minimum;
+                final isActive = active == pet['id']?.toString();
+                final petName = pet['name']?.toString() ?? 'Pet';
+                final reward = _petExpReward(petName);
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 78,
+                          height: 78,
+                          child: unlocked
+                              ? Image.asset(
+                                  _petAsset(petName),
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, _, _) => const Icon(
+                                    Icons.pets_rounded,
+                                    color: ChatatanColors.primary,
+                                    size: 42,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.lock_outline,
+                                  color: Colors.grey,
+                                  size: 40,
+                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                petName,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                unlocked
+                                    ? '${pet['description'] ?? ''}\n+$reward EXP per streak harian'
+                                    : 'Terbuka pada streak $minimum hari',
+                                style: const TextStyle(height: 1.35),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isActive)
+                          const Icon(
+                            Icons.check_circle,
+                            color: ChatatanColors.primary,
+                          )
+                        else if (unlocked)
+                          FilledButton(
+                            onPressed: () =>
+                                _choose(int.parse(pet['id'].toString())),
+                            child: const Text('Pilih'),
+                          ),
+                      ],
                     ),
                   ),
-                  title: Text(pet['name']?.toString() ?? 'Pet'),
-                  subtitle: Text(
-                    unlocked
-                        ? '${pet['description'] ?? ''}\n+10 EXP per streak harian'
-                        : 'Terbuka pada streak $minimum hari',
-                  ),
-                  isThreeLine: unlocked,
-                  trailing: isActive
-                      ? const Icon(Icons.check_circle, color: Colors.deepPurple)
-                      : unlocked
-                      ? FilledButton(
-                          onPressed: () =>
-                              _choose(int.parse(pet['id'].toString())),
-                          child: const Text('Pilih'),
-                        )
-                      : null,
-                ),
-              );
-            }),
-          ],
-        );
-      },
+                );
+              }),
+            ],
+          );
+        },
+      ),
     ),
   );
 
@@ -115,5 +152,22 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
           context,
         ).showSnackBar(SnackBar(content: Text('$error')));
     }
+  }
+
+  int _petExpReward(String name) {
+    final normalized = name.toLowerCase();
+    if (normalized.contains('astra')) return 18;
+    if (normalized.contains('nori')) return 15;
+    return 10;
+  }
+
+  String _petAsset(String name) {
+    final normalized = name.toLowerCase();
+    if (normalized.contains('lumi')) return 'assets/images/pet_lumi.png';
+    if (normalized.contains('kucing')) return 'assets/images/pet_kucing.png';
+    if (normalized.contains('piko')) return 'assets/images/pet_piko.png';
+    if (normalized.contains('nori')) return 'assets/images/pet_nori.png';
+    if (normalized.contains('astra')) return 'assets/images/pet_astra.png';
+    return 'assets/images/chatatan_study_pet.png';
   }
 }

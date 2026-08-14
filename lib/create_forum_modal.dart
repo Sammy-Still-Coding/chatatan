@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'db_helper.dart';
+import 'chatatan_theme.dart';
 
 class CreateForumModal extends StatefulWidget {
   // BENAR
@@ -36,9 +37,8 @@ class _CreateForumModalState extends State<CreateForumModal> {
           .map((item) => item['id']?.toString())
           .whereType<String>()
           .toSet();
-      final result = await showModalBottomSheet<List<Map<String, dynamic>>>(
+      final result = await showChatatanGlassSheet<List<Map<String, dynamic>>>(
         context: context,
-        isScrollControlled: true,
         builder: (sheetContext) {
           final selected = <String>{...selectedIds};
           return StatefulBuilder(
@@ -47,6 +47,7 @@ class _CreateForumModalState extends State<CreateForumModal> {
                 height: MediaQuery.sizeOf(context).height * .7,
                 child: Column(
                   children: [
+                    const ChatatanSheetHandle(),
                     const ListTile(
                       title: Text('Pilih file dari Library'),
                       subtitle: Text('File akan masuk antrian kurasi Forum'),
@@ -228,7 +229,7 @@ class _CreateForumModalState extends State<CreateForumModal> {
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        top: 20,
+        top: 0,
         left: 16,
         right: 16,
       ),
@@ -237,6 +238,7 @@ class _CreateForumModalState extends State<CreateForumModal> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const ChatatanSheetHandle(),
             // Header Modal
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

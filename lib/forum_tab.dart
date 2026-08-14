@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'create_forum_modal.dart';
 import 'forum_detail_page.dart';
 import 'db_helper.dart';
+import 'chatatan_theme.dart';
 
 class ForumTab extends StatefulWidget {
   const ForumTab({super.key});
@@ -140,13 +141,8 @@ class _ForumTabState extends State<ForumTab> {
   }
 
   Future<void> _openCreateModal() async {
-    final result = await showModalBottomSheet<bool>(
+    final result = await showChatatanGlassSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => const CreateForumModal(),
     );
 
@@ -166,7 +162,7 @@ class _ForumTabState extends State<ForumTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FB),
+      backgroundColor: Colors.transparent,
       body: RefreshIndicator(
         onRefresh: _fetchPosts,
         child: SingleChildScrollView(
@@ -185,8 +181,18 @@ class _ForumTabState extends State<ForumTab> {
                     horizontal: 16,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8EAF6),
-                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withValues(alpha: .80),
+                        const Color(0xFFDCD9FF).withValues(alpha: .58),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: .9),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -260,12 +266,31 @@ class _ForumTabState extends State<ForumTab> {
                         : 0;
                     final isBookmarked = post['is_bookmarked'] ?? false;
 
-                    return Card(
+                    return Container(
                       margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Colors.white.withValues(alpha: .78),
+                            const Color(0xFFDDE7FF).withValues(alpha: .42),
+                          ],
+                        ),
                         borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: .92),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xFF6678BE,
+                            ).withValues(alpha: .10),
+                            blurRadius: 22,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
                       ),
-                      elevation: 0,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(16),
                         onTap: () => _openDetailPage(postId),
@@ -359,43 +384,62 @@ class _ForumTabState extends State<ForumTab> {
 
                               Row(
                                 children: [
-                                  Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        tooltip: 'Vote naik',
-                                        visualDensity: VisualDensity.compact,
-                                        onPressed: () =>
-                                            _toggleVote(index, 'LIKE'),
-                                        icon: Icon(
-                                          Icons.keyboard_arrow_up_rounded,
-                                          color: vote == 'LIKE'
-                                              ? const Color(0xFF6C63FF)
-                                              : Colors.grey,
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: .66,
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: .9,
                                         ),
                                       ),
-                                      Text(
-                                        '$score',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: vote == null
-                                              ? Colors.grey.shade700
-                                              : const Color(0xFF6C63FF),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          tooltip: 'Vote naik',
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: () =>
+                                              _toggleVote(index, 'LIKE'),
+                                          icon: Icon(
+                                            Icons.arrow_upward_rounded,
+                                            size: 24,
+                                            color: vote == 'LIKE'
+                                                ? const Color(0xFF6C63FF)
+                                                : Colors.grey,
+                                          ),
                                         ),
-                                      ),
-                                      IconButton(
-                                        tooltip: 'Vote turun',
-                                        visualDensity: VisualDensity.compact,
-                                        onPressed: () =>
-                                            _toggleVote(index, 'DISLIKE'),
-                                        icon: Icon(
-                                          Icons.keyboard_arrow_down_rounded,
-                                          color: vote == 'DISLIKE'
-                                              ? Colors.redAccent
-                                              : Colors.grey,
+                                        Text(
+                                          '$score',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: vote == null
+                                                ? Colors.grey.shade700
+                                                : const Color(0xFF6C63FF),
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                        IconButton(
+                                          tooltip: 'Vote turun',
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: () =>
+                                              _toggleVote(index, 'DISLIKE'),
+                                          icon: Icon(
+                                            Icons.arrow_downward_rounded,
+                                            size: 24,
+                                            color: vote == 'DISLIKE'
+                                                ? Colors.redAccent
+                                                : Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                   const SizedBox(width: 16),
 

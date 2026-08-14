@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'chatatan_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AiTestPage extends StatefulWidget {
@@ -65,58 +66,61 @@ class _AiTestPageState extends State<AiTestPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: ChatatanColors.background,
       appBar: AppBar(title: const Text('AI Connection Test')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Text(
-            'Tes ini memanggil Edge Function smart-action. API key tetap tersimpan di Supabase.',
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _promptController,
-            maxLines: 5,
-            decoration: const InputDecoration(
-              labelText: 'Prompt uji',
-              border: OutlineInputBorder(),
+      body: ChatatanAmbientBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            const Text(
+              'Tes ini memanggil Edge Function smart-action. API key tetap tersimpan di Supabase.',
             ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: _isLoading ? null : _testAi,
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.bolt_rounded),
-            label: Text(_isLoading ? 'Menghubungkan...' : 'Test AI'),
-          ),
-          if (_provider != null) ...[
-            const SizedBox(height: 24),
-            Chip(label: Text('Provider: $_provider')),
-          ],
-          if (_answer != null) ...[
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(_answer!),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _promptController,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'Prompt uji',
+                border: OutlineInputBorder(),
               ),
             ),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 24),
-            Card(
-              color: Colors.red.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text('Gagal: $_error'),
-              ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _isLoading ? null : _testAi,
+              icon: _isLoading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.bolt_rounded),
+              label: Text(_isLoading ? 'Menghubungkan...' : 'Test AI'),
             ),
+            if (_provider != null) ...[
+              const SizedBox(height: 24),
+              Chip(label: Text('Provider: $_provider')),
+            ],
+            if (_answer != null) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(_answer!),
+                ),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 24),
+              Card(
+                color: Colors.red.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text('Gagal: $_error'),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

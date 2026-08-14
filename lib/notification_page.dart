@@ -5,6 +5,7 @@ import 'community_chat_page.dart';
 import 'forum_detail_page.dart';
 import 'app_states.dart';
 import 'notification_settings_page.dart';
+import 'chatatan_theme.dart';
 
 /// In-app notification centre. OS push notifications are intentionally kept
 /// separate: this page always works while the app is open and keeps a history
@@ -137,7 +138,7 @@ class _NotificationPageState extends State<NotificationPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FB),
+      backgroundColor: ChatatanColors.background,
       appBar: AppBar(
         title: const Text('Notifikasi'),
         actions: [
@@ -158,77 +159,78 @@ class _NotificationPageState extends State<NotificationPage> {
           ),
         ],
       ),
-      body: _loading
-          ? const AppLoadingState(label: 'Memuat notifikasi...')
-          : _error != null
-          ? AppErrorState(onRetry: _load, message: _error)
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: _items.isEmpty
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: 130),
-                        AppEmptyState(
-                          icon: Icons.notifications_none_rounded,
-                          title: 'Belum ada notifikasi',
-                          message:
-                              'Pesan, grup, dan balasan forum akan muncul di sini.',
-                        ),
-                      ],
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _items.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final item = _items[index];
-                        final isRead = item['is_read'] == true;
-                        return Material(
-                          color: isRead
-                              ? Colors.white
-                              : const Color(0xFFEEECFF),
-                          borderRadius: BorderRadius.circular(16),
-                          child: ListTile(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            leading: CircleAvatar(
-                              backgroundColor: const Color(0xFF6C63FF),
-                              child: Icon(
-                                _iconFor(item['type']?.toString() ?? ''),
-                                color: Colors.white,
-                              ),
-                            ),
-                            title: Text(
-                              item['title']?.toString() ?? 'Notifikasi',
-                              style: TextStyle(
-                                fontWeight: isRead
-                                    ? FontWeight.w500
-                                    : FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if ((item['body']?.toString() ?? '').isNotEmpty)
-                                  Text(
-                                    item['body'].toString(),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  _timeAgo(item['created_at']),
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                              ],
-                            ),
-                            onTap: () => _openNotification(item),
+      body: ChatatanAmbientBackground(
+        child: _loading
+            ? const AppLoadingState(label: 'Memuat notifikasi...')
+            : _error != null
+            ? AppErrorState(onRetry: _load, message: _error)
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: _items.isEmpty
+                    ? ListView(
+                        children: const [
+                          SizedBox(height: 130),
+                          AppEmptyState(
+                            icon: Icons.notifications_none_rounded,
+                            title: 'Belum ada notifikasi',
+                            message:
+                                'Pesan, grup, dan balasan forum akan muncul di sini.',
                           ),
-                        );
-                      },
-                    ),
-            ),
+                        ],
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _items.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final item = _items[index];
+                          final isRead = item['is_read'] == true;
+                          return ChatatanGlass(
+                            radius: 21,
+                            opacity: isRead ? .58 : .76,
+                            child: ListTile(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              leading: CircleAvatar(
+                                backgroundColor: const Color(0xFF6C63FF),
+                                child: Icon(
+                                  _iconFor(item['type']?.toString() ?? ''),
+                                  color: Colors.white,
+                                ),
+                              ),
+                              title: Text(
+                                item['title']?.toString() ?? 'Notifikasi',
+                                style: TextStyle(
+                                  fontWeight: isRead
+                                      ? FontWeight.w500
+                                      : FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if ((item['body']?.toString() ?? '')
+                                      .isNotEmpty)
+                                    Text(
+                                      item['body'].toString(),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    _timeAgo(item['created_at']),
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                              onTap: () => _openNotification(item),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+      ),
     );
   }
 }

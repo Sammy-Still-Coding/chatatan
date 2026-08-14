@@ -8,6 +8,7 @@ import 'package:file_saver/file_saver.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'db_helper.dart';
+import 'chatatan_theme.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -1168,13 +1169,21 @@ class LibraryPageState extends State<LibraryPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: .78),
+            const Color(0xFFDDE7FF).withValues(alpha: .46),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: .9)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: const Color(0xFF6678BE).withValues(alpha: .10),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -1569,9 +1578,18 @@ class LibraryPageState extends State<LibraryPage> {
                     width: 178,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withValues(alpha: .80),
+                          const Color(0xFFDDE7FF).withValues(alpha: .46),
+                        ],
+                      ),
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE9E7F4)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .92),
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -1650,132 +1668,171 @@ class LibraryPageState extends State<LibraryPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F5FA),
-
-      appBar: AppBar(
-        title: const Text('Library'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-
-      body: Stack(
-        children: [
-          RefreshIndicator(onRefresh: _loadLibrary, child: _buildBody()),
-
-          // ------------------------------------------------------
-          // UPLOAD LOADING
-          // ------------------------------------------------------
-          if (_isUploading)
-            Container(
-              color: Colors.black.withValues(alpha: 0.25),
-              child: const Center(
-                child: Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(),
-
-                        SizedBox(height: 16),
-
-                        Text('Mengupload item...'),
-                      ],
+      backgroundColor: ChatatanColors.background,
+      body: ChatatanAmbientBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 28, 20, 20),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Library',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: ChatatanColors.ink,
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+              Expanded(
+                child: Stack(
+                  children: [
+                    RefreshIndicator(
+                      onRefresh: _loadLibrary,
+                      child: _buildBody(),
+                    ),
+
+                    if (_isUploading)
+                      Container(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        child: const Center(
+                          child: Card(
+                            child: Padding(
+                              padding: EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(),
+
+                                  SizedBox(height: 16),
+
+                                  Text('Mengupload item...'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
 
       // ----------------------------------------------------------
       // ADD BUTTON
       // ----------------------------------------------------------
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 70),
-        child: FloatingActionButton(
-          onPressed: _isUploading ? null : _showAddLibraryMenu,
-          child: const Icon(Icons.add),
+        padding: const EdgeInsets.only(bottom: 112),
+        child: ChatatanGlass(
+          radius: 32,
+          opacity: .72,
+          blur: 26,
+          onTap: _isUploading ? null : _showAddLibraryMenu,
+          child: const SizedBox(
+            width: 62,
+            height: 62,
+            child: Center(
+              child: Icon(
+                Icons.add_rounded,
+                color: ChatatanColors.primary,
+                size: 32,
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 
   void _showAddLibraryMenu() {
-    showModalBottomSheet(
+    showChatatanGlassSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (context) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                const ChatatanSheetHandle(),
                 const Text(
                   'Tambah ke Library',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
 
                 const SizedBox(height: 20),
 
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.shade50,
-                      borderRadius: BorderRadius.circular(12),
+                ChatatanGlass(
+                  radius: 19,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.image, color: Colors.deepPurple),
                     ),
-                    child: const Icon(Icons.image, color: Colors.deepPurple),
+                    title: const Text('Gambar'),
+                    subtitle: const Text('JPG, PNG, WEBP, GIF'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _pickAndUploadImage();
+                    },
                   ),
-                  title: const Text('Gambar'),
-                  subtitle: const Text('JPG, PNG, WEBP, GIF'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _pickAndUploadImage();
-                  },
                 ),
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.shade50,
-                      borderRadius: BorderRadius.circular(12),
+                ChatatanGlass(
+                  radius: 19,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.create_new_folder_outlined,
+                        color: Colors.deepPurple,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.create_new_folder_outlined,
-                      color: Colors.deepPurple,
-                    ),
+                    title: const Text('Folder baru'),
+                    subtitle: const Text('Kelompokkan item Library'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _createFolder();
+                    },
                   ),
-                  title: const Text('Folder baru'),
-                  subtitle: const Text('Kelompokkan item Library'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _createFolder();
-                  },
                 ),
 
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.shade50,
-                      borderRadius: BorderRadius.circular(12),
+                ChatatanGlass(
+                  radius: 19,
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.description,
+                        color: Colors.deepPurple,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.description,
-                      color: Colors.deepPurple,
-                    ),
+                    title: const Text('PDF / Dokumen'),
+                    subtitle: const Text('PDF, DOCX, XLSX, PPTX, TXT'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _pickAndUploadFile();
+                    },
                   ),
-                  title: const Text('PDF / Dokumen'),
-                  subtitle: const Text('PDF, DOCX, XLSX, PPTX, TXT'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _pickAndUploadFile();
-                  },
                 ),
 
                 const SizedBox(height: 8),
@@ -1797,34 +1854,36 @@ class LibraryPageState extends State<LibraryPage> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: TextField(
-            controller: _searchController,
-            textInputAction: TextInputAction.search,
-            onChanged: (value) {
-              setState(() {
-                _searchQuery = value;
-              });
-            },
-            decoration: InputDecoration(
-              hintText: 'Cari judul, deskripsi, atau nama file',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Hapus pencarian',
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {
-                          _searchQuery = '';
-                        });
-                      },
-                      icon: const Icon(Icons.clear),
-                    ),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
+          child: ChatatanGlass(
+            radius: 22,
+            opacity: .64,
+            child: TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'Cari judul, deskripsi, atau nama file',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Hapus pencarian',
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                        icon: const Icon(Icons.clear),
+                      ),
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
               ),
             ),
           ),
@@ -1983,7 +2042,7 @@ class _LibraryFolderPageState extends State<LibraryFolderPage> {
           fileName.contains(query);
     }).toList();
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F5FA),
+      backgroundColor: ChatatanColors.background,
       appBar: AppBar(
         title: Text(name),
         backgroundColor: Colors.transparent,
