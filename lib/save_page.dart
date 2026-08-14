@@ -2,25 +2,25 @@ import 'package:flutter/material.dart';
 import 'chatatan_theme.dart';
 import 'db_helper.dart';
 import 'forum_detail_page.dart';
-
+ 
 class SavedPage extends StatefulWidget {
   const SavedPage({super.key});
-
+ 
   @override
   State<SavedPage> createState() => _SavedPageState();
 }
-
+ 
 class _SavedPageState extends State<SavedPage> {
   final DbHelper _dbHelper = DbHelper();
   bool _isLoading = true;
   List<Map<String, dynamic>> _savedPosts = [];
-
+ 
   @override
   void initState() {
     super.initState();
     _loadSavedPosts();
   }
-
+ 
   Future<void> _loadSavedPosts() async {
     setState(() => _isLoading = true);
     try {
@@ -41,7 +41,7 @@ class _SavedPageState extends State<SavedPage> {
       }
     }
   }
-
+ 
   Future<void> _removeBookmark(int postId, int index) async {
     try {
       await _dbHelper.toggleForumBookmark(postId, true);
@@ -68,14 +68,14 @@ class _SavedPageState extends State<SavedPage> {
       }
     }
   }
-
+ 
   String _formatDate(String? rawDate) {
     if (rawDate == null) return '';
     final date = DateTime.tryParse(rawDate);
     if (date == null) return '';
     return '${date.day}/${date.month}/${date.year}';
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -85,17 +85,17 @@ class _SavedPageState extends State<SavedPage> {
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFF1A1B3E),
+            color: Theme.of(context).colorScheme.onSurface,
             size: 20,
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Item Tersimpan',
           style: TextStyle(
-            color: Color(0xFF1A1B3E),
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
@@ -120,16 +120,16 @@ class _SavedPageState extends State<SavedPage> {
                             final item = _savedPosts[index];
                             final post =
                                 item['forum_posts'] as Map<String, dynamic>?;
-
+ 
                             if (post == null) return const SizedBox.shrink();
-
+ 
                             final int postId = post['id'];
                             final String title = post['title'] ?? 'Tanpa Judul';
                             final String content = post['content'] ?? '';
                             final String createdAt = _formatDate(
                               post['created_at'],
                             );
-
+ 
                             final user =
                                 post['users']
                                     as Map<
@@ -141,7 +141,7 @@ class _SavedPageState extends State<SavedPage> {
                                 user?['full_name'] ??
                                 'Pengguna';
                             final String? avatarUrl = user?['avatar_url'];
-
+ 
                             return _buildSavedCard(
                               index: index,
                               postId: postId,
@@ -159,7 +159,7 @@ class _SavedPageState extends State<SavedPage> {
       ),
     );
   }
-
+ 
   Widget _buildSavedCard({
     required int index,
     required int postId,
@@ -216,10 +216,10 @@ class _SavedPageState extends State<SavedPage> {
                       children: [
                         Text(
                           author,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF1A1B3E),
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                         if (createdAt.isNotEmpty)
@@ -249,10 +249,10 @@ class _SavedPageState extends State<SavedPage> {
               const SizedBox(height: 12),
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF1A1B3E),
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 6),
@@ -272,7 +272,7 @@ class _SavedPageState extends State<SavedPage> {
       ),
     );
   }
-
+ 
   Widget _buildEmptyState() {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -301,12 +301,12 @@ class _SavedPageState extends State<SavedPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    const Text(
+                    Text(
                       'Belum Ada Item Tersimpan',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1B3E),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 8),

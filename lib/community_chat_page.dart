@@ -105,17 +105,16 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
     });
   }
 
-  Future<void> _loadRoomInfo() async {
+Future<void> _loadRoomInfo() async {
     try {
       final room = await _dbHelper.getConversation(_convIdInt);
       if (!mounted) return;
 
-      // Ownership must not depend on presence/settings relations. Those
-      // relations can be unavailable while their migration or Realtime setup
-      // is still being applied, but the group creator must remain an owner.
       _roomOwnerId = room?['created_by']?.toString();
       _roomAvatarUrl = room?['avatar_url']?.toString();
-      if (room?['title']?.toString().trim().isNotEmpty == true) {
+      
+      // FIX 1: Hanya timpakan _roomTitle dari room['title'] JIKA ini adalah GRUP
+      if (widget.isGroup && room?['title']?.toString().trim().isNotEmpty == true) {
         _roomTitle = room!['title'].toString();
       }
       setState(() {});
@@ -125,7 +124,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
         final response = await _supabase
             .from('conversation_members')
             .select(
-              'user_id, role, last_read_message_id, user_presence(is_online, last_seen_at), conversation_member_settings(is_pinned)',
+              'user_id, role, last_read_message_id, user_presence(is_online, last_seen_at), conversation_member_settings(is_pinned, nickname)',
             )
             .eq('conversation_id', _convIdInt);
         members = response.cast<Map<String, dynamic>>();
@@ -136,6 +135,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
             .eq('conversation_id', _convIdInt);
         members = fallback.cast<Map<String, dynamic>>();
       }
+      
       final other = members
           .where((member) => member['user_id']?.toString() != currentUserId)
           .toList();
@@ -143,7 +143,9 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
           .where((member) => member['user_id']?.toString() == currentUserId)
           .toList();
       if (!mounted) return;
+      
       _myGroupRole = own.isEmpty ? null : own.first['role']?.toString();
+      
       if (other.length == 1) {
         final rawPresence = other.first['user_presence'];
         final presence = rawPresence is List && rawPresence.isNotEmpty
@@ -162,27 +164,52 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
         _roomSubtitle = '${members.length} anggota';
       }
       _otherMembers = other;
+      
       try {
         final profiles = await _dbHelper.getConversationMembers(_convIdInt);
         _memberProfiles = {
           for (final profile in profiles)
             profile['user_id']?.toString() ?? '': profile,
         };
+        
+        // FIX 2: Jika private chat, set nama & foto profil lawan bicara
         if (!widget.isGroup && other.isNotEmpty) {
           final otherId = other.first['user_id']?.toString() ?? '';
-          _roomAvatarUrl = _memberProfiles[otherId]?['avatar_url']?.toString();
+          final otherProfile = _memberProfiles[otherId];
+          
+          if (otherProfile != null) {
+            _roomAvatarUrl = otherProfile['avatar_url']?.toString();
+            
+            // Utamakan nama lengkap, jika tidak ada pakai username
+            final otherName = (otherProfile['full_name']?.toString().trim().isNotEmpty == true)
+                ? otherProfile['full_name'].toString()
+                : otherProfile['username']?.toString();
+                
+            if (otherName != null && otherName.isNotEmpty) {
+              _roomTitle = otherName;
+            }
+          }
         }
       } catch (_) {
         // Read receipts still work with initials if profile lookup is blocked.
       }
+      
       if (!mounted) return;
+      
       final rawOwnSettings = own.isEmpty
           ? null
           : own.first['conversation_member_settings'];
       final ownSettings = rawOwnSettings is List && rawOwnSettings.isNotEmpty
           ? rawOwnSettings.first
           : rawOwnSettings;
+          
       _isPinned = ownSettings is Map && ownSettings['is_pinned'] == true;
+      
+      // FIX 3: Jika user pernah memasang nama panggilan (nickname) khusus, gunakan nickname tersebut
+      if (ownSettings is Map && ownSettings['nickname']?.toString().trim().isNotEmpty == true) {
+        _roomTitle = ownSettings['nickname'].toString();
+      }
+      
       setState(() {});
     } catch (_) {}
   }
@@ -1367,7 +1394,7 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                 ? CrossAxisAlignment.end
                                 : CrossAxisAlignment.start,
                             children: [
-                              if (!isMe) ...[
+                              if (!isMe && widget.isGroup) ...[
                                 Text(
                                   senderName,
                                   style: const TextStyle(
