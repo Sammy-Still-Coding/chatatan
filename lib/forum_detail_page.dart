@@ -350,7 +350,8 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                 Icons.description_outlined,
                 color: Color(0xFF6C5CE7),
               ),
-              title: Text(file['original_name']?.toString() ?? 'File'),
+              title: Text(file['original_name']?.toString() ?? 'File',
+              style: const TextStyle(color: Colors.black87)),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -861,9 +862,9 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                   const SizedBox(height: 4),
                                   Text(
                                     reply['content'] ?? '',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 14,
-                                      color: Colors.black87,
+                                      color: Theme.of(context).colorScheme.onSurface,
                                     ),
                                   ),
                                   if (reply['forum_attachments'] is List)
@@ -930,6 +931,7 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                                     fontSize: 12,
                                                     decoration: TextDecoration
                                                         .underline,
+                                                        color: Colors.black87,
                                                   ),
                                                 ),
                                               ),

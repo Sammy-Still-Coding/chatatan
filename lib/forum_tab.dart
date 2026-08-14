@@ -614,7 +614,7 @@ class _ForumTabState extends State<ForumTab> {
               file['original_name']?.toString() ?? 'Lampiran',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87,),
             ),
           ),
           const SizedBox(width: 8),
