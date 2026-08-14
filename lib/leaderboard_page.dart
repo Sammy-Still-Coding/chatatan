@@ -47,95 +47,107 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-    appBar: AppBar(title: const Text('Top 100 Leaderboard')),
-    body: ChatatanAmbientBackground(
-      child: _loading
-          ? const AppLoadingState(label: 'Memuat peringkat EXP...')
-          : _error != null
-          ? AppErrorState(message: _error, onRetry: _load)
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-                children: [
-                  ChatatanGlass(
-                    padding: const EdgeInsets.all(18),
-                    radius: 25,
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.emoji_events_rounded,
-                          color: Color(0xFFFFB51B),
-                          size: 34,
-                        ),
-                        SizedBox(width: 13),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Peringkat pembelajar',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              SizedBox(height: 3),
-                              Text(
-                                'Diurutkan dari total EXP tertinggi.',
-                                style: TextStyle(color: ChatatanColors.muted),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_myRank != null && _myRank! > 100) ...[
-                    const SizedBox(height: 12),
+  Widget build(BuildContext context) {
+    // 1. Cek apakah dark mode aktif
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inkColor = isDark ? const Color(0xFFF4F6FF) : const Color(0xFF111938);
+    final mutedColor = isDark ? const Color(0xFF9CA9D8) : const Color(0xFF6C7694);
+
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(title: const Text('Top 100 Leaderboard')),
+      body: ChatatanAmbientBackground(
+        child: _loading
+            ? const AppLoadingState(label: 'Memuat peringkat EXP...')
+            : _error != null
+            ? AppErrorState(message: _error, onRetry: _load)
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+                  children: [
                     ChatatanGlass(
-                      opacity: .76,
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(18),
+                      radius: 25,
                       child: Row(
                         children: [
-                          const CircleAvatar(
-                            backgroundColor: Color(0xFFE9E5FF),
-                            child: Icon(
-                              Icons.person_rounded,
-                              color: ChatatanColors.primary,
-                            ),
+                          const Icon(
+                            Icons.emoji_events_rounded,
+                            color: Color(0xFFFFB51B),
+                            size: 34,
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 13),
                           Expanded(
-                            child: Text(
-                              'Peringkat kamu saat ini #$_myRank',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Peringkat pembelajar',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    // 2. Gunakan warna adaptif
+                                    color: inkColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'Diurutkan dari total EXP tertinggi.',
+                                  // 3. Gunakan warna muted adaptif
+                                  style: TextStyle(color: mutedColor),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
+                    if (_myRank != null && _myRank! > 100) ...[
+                      const SizedBox(height: 12),
+                      ChatatanGlass(
+                        opacity: .76,
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            const CircleAvatar(
+                              backgroundColor: Color(0xFFE9E5FF),
+                              child: Icon(
+                                Icons.person_rounded,
+                                color: ChatatanColors.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Peringkat kamu saat ini #$_myRank',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  // 4. Warna adaptif untuk teks peringkat
+                                  color: inkColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    if (_leaders.isEmpty)
+                      const AppEmptyState(
+                        icon: Icons.leaderboard_rounded,
+                        title: 'Belum ada peringkat',
+                        message: 'Kumpulkan EXP agar namamu tampil di sini.',
+                      )
+                    else
+                      ..._leaders.map((user) => _rankCard(user, isDark, inkColor)),
                   ],
-                  const SizedBox(height: 14),
-                  if (_leaders.isEmpty)
-                    const AppEmptyState(
-                      icon: Icons.leaderboard_rounded,
-                      title: 'Belum ada peringkat',
-                      message: 'Kumpulkan EXP agar namamu tampil di sini.',
-                    )
-                  else
-                    ..._leaders.map(_rankCard),
-                ],
+                ),
               ),
-            ),
-    ),
-  );
+      ),
+    );
+  }
 
-  Widget _rankCard(Map<String, dynamic> user) {
+  Widget _rankCard(Map<String, dynamic> user, bool isDark, Color inkColor) {
     final rank =
         int.tryParse(user['rank']?.toString() ?? '') ??
         (_leaders.indexOf(user) + 1);
@@ -148,6 +160,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
         : rank == 3
         ? const Color(0xFFC97945)
         : ChatatanColors.primary;
+
     return ChatatanGlass(
       margin: const EdgeInsets.only(bottom: 9),
       radius: 20,
@@ -182,14 +195,19 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: isMe ? ChatatanColors.primary : ChatatanColors.ink,
+                // 5. Gunakan inkColor adaptif jika bukan user yang sedang login
+                color: isMe ? ChatatanColors.primary : inkColor,
                 fontWeight: FontWeight.w800,
               ),
             ),
           ),
           Text(
             '${user['total_points'] ?? 0}',
-            style: const TextStyle(fontWeight: FontWeight.w900),
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              // 6. Pastikan poin exp juga menggunakan warna adaptif
+              color: inkColor,
+            ),
           ),
           const SizedBox(width: 4),
           const Icon(Icons.star_rounded, color: Color(0xFFFFB51B), size: 18),

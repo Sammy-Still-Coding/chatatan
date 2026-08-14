@@ -230,6 +230,52 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// Glass khusus buat card streak & token di pet hero, biar ga nyatu
+  /// sama background gradient dark mode di _hero().
+  Widget _petMetricGlass({required Widget child, double radius = 23}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isDark
+                  ? [
+                      Colors.white.withValues(alpha: .14),
+                      Colors.white.withValues(alpha: .05),
+                    ]
+                  : [
+                      Colors.white.withValues(alpha: .70),
+                      Colors.white.withValues(alpha: .34),
+                    ],
+            ),
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: .22)
+                  : Colors.white.withValues(alpha: .86),
+              width: isDark ? 1.2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.black.withValues(alpha: .35)
+                    : const Color(0xFF6373B7).withValues(alpha: .12),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
   Widget _header() => Row(
     children: [
       Expanded(
@@ -313,82 +359,101 @@ class _HomePageState extends State<HomePage> {
     final streak = _number('current_streak');
     final tokens = _number('token_balance');
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InkWell(
-      onTap: () => Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const PetRoadmapPage())),
-      borderRadius: BorderRadius.circular(30),
-      child: Ink(
-        // Fixed layout avoids overlaps on narrow Android screens.
-        height: 242,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark
-                ? [
-                    const Color(0xFF202842),
-                    const Color(0xFF181E38),
-                    const Color(0xFF241B3C),
-                  ]
-                : const [
-                    Color(0xFFFFFFFF),
-                    Color(0xFFDDE7FF),
-                    Color(0xFFEBD9FF),
-                  ],
+
+    return Container(
+      height: 242,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: isDark 
+                ? Colors.black.withValues(alpha: .3) 
+                : const Color(0xFF5765B8).withValues(alpha: .14),
+            blurRadius: 28,
+            offset: const Offset(0, 13),
           ),
-          border: Border.all(
-            color: isDark
-                ? const Color(0xFF9CA9D8).withValues(alpha: .22)
-                : Colors.white.withValues(alpha: .9),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF5765B8).withValues(alpha: .14),
-              blurRadius: 28,
-              offset: const Offset(0, 13),
-            ),
-          ],
-        ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              width: 106,
-              child: Column(
-                children: [
-                  _metric(
-                    streak.toString(),
-                    'Day Streak',
-                    '🔥 On Fire!',
-                    const Color(0xFFFF6B28),
-                    () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const PetRoadmapPage()),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: BackdropFilter(
+          // Memberikan efek blur ala liquid glass pada background
+          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PetRoadmapPage()),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    // Opacity dikurangi agar efek glass lebih terlihat
+                    colors: isDark
+                        ? [
+                            const Color(0xFF202842).withValues(alpha: .75),
+                            const Color(0xFF181E38).withValues(alpha: .55),
+                            const Color(0xFF241B3C).withValues(alpha: .75),
+                          ]
+                        : [
+                            Colors.white.withValues(alpha: .85),
+                            const Color(0xFFDDE7FF).withValues(alpha: .45),
+                            const Color(0xFFEBD9FF).withValues(alpha: .55),
+                          ],
+                  ),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: isDark
+                        ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                        : Colors.white.withValues(alpha: .9),
+                    width: 1.5,
+                  ),
+                ),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      width: 106,
+                      child: Column(
+                        children: [
+                          _metric(
+                            streak.toString(),
+                            'Day Streak',
+                            '🔥 On Fire!',
+                            const Color(0xFFFF6B28),
+                            () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => const PetRoadmapPage()),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _metric(
+                            tokens.toString(),
+                            'Tokens',
+                            '✨ isi ulang mingguan',
+                            _primary,
+                            null,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  _metric(
-                    tokens.toString(),
-                    'Tokens',
-                    '✨ isi ulang mingguan',
-                    _primary,
-                    null,
-                  ),
-                ],
+                    Positioned(
+                      right: 4,
+                      bottom: -5,
+                      width: 168,
+                      height: 218,
+                      child: _petHero(),
+                    ),
+                  ],
+                ),
               ),
             ),
-            Positioned(
-              right: 4,
-              bottom: -5,
-              width: 168,
-              height: 218,
-              child: _petHero(),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -400,75 +465,87 @@ class _HomePageState extends State<HomePage> {
     String caption,
     Color accent,
     VoidCallback? onTap,
-  ) => SizedBox(
-    height: 105,
-    width: double.infinity,
-    child: _glassSurface(
-      radius: 23,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(23),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  label == 'Day Streak'
-                      ? Icons.local_fire_department_rounded
-                      : Icons.auto_awesome_rounded,
-                  color: accent,
-                  size: 18,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w800,
-                    color: _ink,
-                  ),
-                ),
-                Text(
-                  label,
-                  style: TextStyle(
+  ) {
+    // 1. Tentukan warna tint pastel berdasarkan indikatornya
+    final tintColor = label == 'Day Streak'
+        ? const Color(0xFFFFF0E6) // Tint oranye sangat muda untuk streak
+        : const Color(0xFFF0EEFF); // Tint ungu sangat muda untuk token
+
+    return SizedBox(
+      height: 105,
+      width: double.infinity,
+      child: _glassSurface(
+        radius: 23,
+        // 2. Masukkan warna tint ke dalam _glassSurface
+        tint: tintColor,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(23),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    label == 'Day Streak'
+                        ? Icons.local_fire_department_rounded
+                        : Icons.auto_awesome_rounded,
                     color: accent,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 10.5,
+                    size: 18,
                   ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  caption,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: accent,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 8.5,
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                      color: _ink,
+                    ),
                   ),
-                ),
-              ],
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: accent,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 10.5,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    caption,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: accent,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 8.5,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
-  Widget _petHero() => Stack(
+Widget _petHero() => Stack(
     alignment: Alignment.center,
     children: [
+      // Glow tipis di belakang pet (menyesuaikan gaya gambar referensi)
       Positioned.fill(
         child: DecoratedBox(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: RadialGradient(
               colors: [
-                const Color(0xFF8D83FF).withValues(alpha: .55),
+                Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF8D83FF).withValues(alpha: .25)
+                    : Colors.white.withValues(alpha: .6),
                 Colors.transparent,
               ],
             ),
@@ -484,7 +561,7 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       Positioned(
-        bottom: 3,
+        bottom: 15,
         left: 0,
         child: Icon(
           Icons.auto_awesome,
@@ -494,9 +571,8 @@ class _HomePageState extends State<HomePage> {
       ),
       GestureDetector(
         onTap: () async {
-          await Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const PetSelectionPage()));
+          await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PetSelectionPage()));
           if (mounted) _load();
         },
         child: Padding(
@@ -507,29 +583,25 @@ class _HomePageState extends State<HomePage> {
       Positioned(
         bottom: 3,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
           decoration: BoxDecoration(
             color: Theme.of(context).brightness == Brightness.dark
                 ? const Color(0xFF202842)
-                : Colors.white.withValues(alpha: .82),
+                : Colors.white,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF9CA9D8).withValues(alpha: .22)
-                  : Colors.white,
-            ),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF4A5690).withValues(alpha: .12),
                 blurRadius: 10,
+                offset: const Offset(0, 4), // Bayangan jatuh ke bawah
               ),
             ],
           ),
           child: Text(
-            _pet?['name']?.toString() ?? 'ChaTatan Pet',
+            _pet?['name']?.toString() ?? 'Piko',
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
               color: _ink,
             ),
           ),
@@ -1129,7 +1201,9 @@ class _HomePageState extends State<HomePage> {
     ).push(MaterialPageRoute(builder: (_) => const LeaderboardPage()));
   }
 
-  Widget _leaderboard() => _glassSurface(
+  Widget _leaderboard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return _glassSurface(
     radius: 25,
     child: Material(
       color: Colors.transparent,
@@ -1188,7 +1262,9 @@ class _HomePageState extends State<HomePage> {
                   vertical: 9,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF0EEFF),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: .08)
+                      : const Color(0xFFF0EEFF),
                   borderRadius: BorderRadius.circular(13),
                 ),
                 child: Row(
@@ -1212,6 +1288,7 @@ class _HomePageState extends State<HomePage> {
       ),
     ),
   );
+  }
 
   Widget _leaderRow(int index, Map<String, dynamic> user) {
     const medals = [Color(0xFFFFB51B), Color(0xFF9EA7B8), Color(0xFFC97945)];
