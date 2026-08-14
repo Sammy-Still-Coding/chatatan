@@ -613,7 +613,7 @@ class CommunityPageState extends State<CommunityPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ChatatanColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: ChatatanAmbientBackground(
         child: SafeArea(
           child: Column(
@@ -626,12 +626,12 @@ class CommunityPageState extends State<CommunityPage>
                 ),
                 child: Row(
                   children: [
-                    const Text(
+                    Text(
                       'Community',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
-                        color: ChatatanColors.ink,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const Spacer(),
@@ -685,10 +685,17 @@ class CommunityPageState extends State<CommunityPage>
     required IconData icon,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: Colors.white.withValues(alpha: .64),
+      color: isDark
+          ? const Color(0xFF202842).withValues(alpha: .90)
+          : Colors.white.withValues(alpha: .64),
       shape: CircleBorder(
-        side: BorderSide(color: Colors.white.withValues(alpha: .92)),
+        side: BorderSide(
+          color: isDark
+              ? const Color(0xFF9CA9D8).withValues(alpha: .24)
+              : Colors.white.withValues(alpha: .92),
+        ),
       ),
       elevation: 0,
       child: InkWell(
@@ -1047,11 +1054,14 @@ class CommunityPageState extends State<CommunityPage>
             ),
           ],
         ),
-        subtitle: const Text(
+        subtitle: Text(
           'Halo! Ada yang bisa aku bantu hari ini?',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 13, color: Colors.black54),
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         trailing: const Text(
           'Now',
@@ -1129,7 +1139,10 @@ class CommunityPageState extends State<CommunityPage>
               lastMessage,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             Text(
               isOnline ? 'Online' : (lastSeen ?? 'Offline'),

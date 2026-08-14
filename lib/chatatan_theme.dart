@@ -35,6 +35,7 @@ class ChatatanGlass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final content = ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
@@ -45,18 +46,26 @@ class ChatatanGlass extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: opacity + .12),
-                const Color(0xFFDDE7FF).withValues(alpha: opacity * .55),
-              ],
+              colors: isDark
+                  ? [
+                      const Color(0xFF27304E).withValues(alpha: opacity + .08),
+                      const Color(0xFF151B34).withValues(alpha: opacity * .92),
+                    ]
+                  : [
+                      Colors.white.withValues(alpha: opacity + .12),
+                      const Color(0xFFDDE7FF).withValues(alpha: opacity * .55),
+                    ],
             ),
             border: Border.all(
-              color: Colors.white.withValues(alpha: .88),
+              color: isDark
+                  ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                  : Colors.white.withValues(alpha: .88),
               width: 1.1,
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF6678BE).withValues(alpha: .11),
+                color: (isDark ? Colors.black : const Color(0xFF6678BE))
+                    .withValues(alpha: isDark ? .30 : .11),
                 blurRadius: 24,
                 offset: const Offset(0, 9),
               ),
@@ -130,30 +139,45 @@ class ChatatanAmbientBackground extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: ChatatanColors.background,
-    child: Stack(
-      fit: StackFit.expand,
-      children: [
-        Positioned(
-          top: -150,
-          right: -120,
-          child: _blob(const Color(0xFFB9B6FF).withValues(alpha: .30), 330),
-        ),
-        Positioned(
-          top: 330,
-          left: -170,
-          child: _blob(const Color(0xFFBFE8FF).withValues(alpha: .28), 360),
-        ),
-        Positioned(
-          bottom: -180,
-          right: -150,
-          child: _blob(const Color(0xFFE3C7FF).withValues(alpha: .23), 380),
-        ),
-        child,
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ColoredBox(
+      color: isDark ? const Color(0xFF090E1D) : ChatatanColors.background,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            top: -150,
+            right: -120,
+            child: _blob(
+              (isDark ? const Color(0xFF4D3BB4) : const Color(0xFFB9B6FF))
+                  .withValues(alpha: isDark ? .24 : .30),
+              330,
+            ),
+          ),
+          Positioned(
+            top: 330,
+            left: -170,
+            child: _blob(
+              (isDark ? const Color(0xFF15567A) : const Color(0xFFBFE8FF))
+                  .withValues(alpha: isDark ? .20 : .28),
+              360,
+            ),
+          ),
+          Positioned(
+            bottom: -180,
+            right: -150,
+            child: _blob(
+              (isDark ? const Color(0xFF5B286F) : const Color(0xFFE3C7FF))
+                  .withValues(alpha: isDark ? .18 : .23),
+              380,
+            ),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
 
   static Widget _blob(Color color, double size) => IgnorePointer(
     child: ImageFiltered(
@@ -291,6 +315,143 @@ ThemeData buildChatatanTheme() {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: ChatatanColors.ink.withValues(alpha: .94),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    ),
+  );
+}
+
+ThemeData buildChatatanDarkTheme() {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: ChatatanColors.secondary,
+    brightness: Brightness.dark,
+    surface: const Color(0xFF141A2E),
+  );
+  final rounded = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(18),
+  );
+  const ink = Color(0xFFF4F6FF);
+  const muted = Color(0xFFABB5D0);
+  const background = Color(0xFF090E1D);
+  const surface = Color(0xFF161D34);
+
+  return ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.dark,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: background,
+    canvasColor: background,
+    fontFamily: 'Roboto',
+    textTheme: ThemeData.dark().textTheme.apply(
+      bodyColor: ink,
+      displayColor: ink,
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Colors.transparent,
+      foregroundColor: ink,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      centerTitle: false,
+      toolbarHeight: 76,
+      systemOverlayStyle: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: background,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      titleTextStyle: TextStyle(
+        color: ink,
+        fontSize: 21,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      color: surface.withValues(alpha: .82),
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.black.withValues(alpha: .32),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: Colors.white.withValues(alpha: .12)),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: const Color(0xFF202842).withValues(alpha: .86),
+      hintStyle: const TextStyle(color: muted),
+      labelStyle: const TextStyle(color: muted),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: .12)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: .12)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: Color(0xFF9B8CFF), width: 1.5),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: ChatatanColors.primary,
+        foregroundColor: Colors.white,
+        minimumSize: const Size(48, 50),
+        shape: rounded,
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFFC4BCFF),
+        minimumSize: const Size(48, 50),
+        side: BorderSide(color: Colors.white.withValues(alpha: .14)),
+        backgroundColor: const Color(0xFF202842).withValues(alpha: .72),
+        shape: rounded,
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: const Color(0xFFB4AAFF),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ),
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      foregroundColor: Colors.white,
+      backgroundColor: ChatatanColors.primary,
+      elevation: 5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: const Color(0xFF151B30).withValues(alpha: .98),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: surface,
+      surfaceTintColor: Colors.transparent,
+      modalBackgroundColor: surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: const Color(0xFF202842).withValues(alpha: .82),
+      selectedColor: const Color(0xFF453D82),
+      side: BorderSide(color: Colors.white.withValues(alpha: .12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      labelStyle: const TextStyle(color: ink, fontWeight: FontWeight.w600),
+    ),
+    dividerColor: Colors.white.withValues(alpha: .10),
+    iconTheme: const IconThemeData(color: Color(0xFFDCE2F7)),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: const Color(0xFF242C47).withValues(alpha: .98),
+      contentTextStyle: const TextStyle(color: ink),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
   );

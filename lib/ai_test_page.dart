@@ -66,7 +66,7 @@ class _AiTestPageState extends State<AiTestPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ChatatanColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: const Text('AI Connection Test')),
       body: ChatatanAmbientBackground(
         child: ListView(

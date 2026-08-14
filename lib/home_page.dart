@@ -9,6 +9,7 @@ import 'leaderboard_page.dart';
 import 'notification_page.dart';
 import 'pet_roadmap_page.dart';
 import 'pet_selection_page.dart';
+import 'theme_controller.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -27,7 +28,9 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  static const _ink = Color(0xFF111938);
+  static Color get _ink => ThemeController.instance.isDarkMode
+      ? const Color(0xFFF4F6FF)
+      : const Color(0xFF111938);
   static const _primary = Color(0xFF635BFF);
   final _db = DbHelper();
   Map<String, dynamic>? _profile;
@@ -101,65 +104,79 @@ class _HomePageState extends State<HomePage> {
       ? _profile!['username'].toString()
       : 'Teman Belajar';
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF0F5FF),
-    body: Stack(
-      children: [
-        Positioned(
-          top: -120,
-          right: -100,
-          child: _ambientBlob(const Color(0xFFB9B6FF).withValues(alpha: .32)),
-        ),
-        Positioned(
-          top: 310,
-          left: -130,
-          child: _ambientBlob(const Color(0xFFC8E9FF).withValues(alpha: .34)),
-        ),
-        SafeArea(
-          child: _loading
-              ? const AppLoadingState(label: 'Menyiapkan beranda...')
-              : _error != null
-              ? AppErrorState(onRetry: _load, message: _error)
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    // Ruang atas memberi jarak dari status bar; ruang bawah
-                    // memastikan Leaderboard/CTA tidak tertutup floating navbar.
-                    padding: const EdgeInsets.fromLTRB(20, 32, 20, 38),
-                    children: [
-                      _header(),
-                      const SizedBox(height: 24),
-                      _hero(),
-                      const SizedBox(height: 22),
-                      _sectionHeader(
-                        'Recent Chat',
-                        Icons.forum_rounded,
-                        () => widget.onOpenCommunity?.call(2),
-                      ),
-                      const SizedBox(height: 12),
-                      _recentChats(),
-                      const SizedBox(height: 26),
-                      _sectionHeader(
-                        'Trending Discussion',
-                        Icons.local_fire_department_rounded,
-                        () => widget.onOpenCommunity?.call(1),
-                      ),
-                      const SizedBox(height: 12),
-                      _forumsStrip(),
-                      const SizedBox(height: 26),
-                      _overview(),
-                      const SizedBox(height: 20),
-                      _leaderboard(),
-                      const SizedBox(height: 20),
-                      _scanCta(),
-                    ],
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: ColoredBox(
+              color: isDark ? const Color(0xFF090E1D) : const Color(0xFFF0F5FF),
+            ),
+          ),
+          Positioned(
+            top: -120,
+            right: -100,
+            child: _ambientBlob(
+              (isDark ? const Color(0xFF4D3BB4) : const Color(0xFFB9B6FF))
+                  .withValues(alpha: isDark ? .24 : .32),
+            ),
+          ),
+          Positioned(
+            top: 310,
+            left: -130,
+            child: _ambientBlob(
+              (isDark ? const Color(0xFF15567A) : const Color(0xFFC8E9FF))
+                  .withValues(alpha: isDark ? .20 : .34),
+            ),
+          ),
+          SafeArea(
+            child: _loading
+                ? const AppLoadingState(label: 'Menyiapkan beranda...')
+                : _error != null
+                ? AppErrorState(onRetry: _load, message: _error)
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      // Ruang atas memberi jarak dari status bar; ruang bawah
+                      // memastikan Leaderboard/CTA tidak tertutup floating navbar.
+                      padding: const EdgeInsets.fromLTRB(20, 32, 20, 38),
+                      children: [
+                        _header(),
+                        const SizedBox(height: 24),
+                        _hero(),
+                        const SizedBox(height: 22),
+                        _sectionHeader(
+                          'Recent Chat',
+                          Icons.forum_rounded,
+                          () => widget.onOpenCommunity?.call(2),
+                        ),
+                        const SizedBox(height: 12),
+                        _recentChats(),
+                        const SizedBox(height: 26),
+                        _sectionHeader(
+                          'Trending Discussion',
+                          Icons.local_fire_department_rounded,
+                          () => widget.onOpenCommunity?.call(1),
+                        ),
+                        const SizedBox(height: 12),
+                        _forumsStrip(),
+                        const SizedBox(height: 26),
+                        _overview(),
+                        const SizedBox(height: 20),
+                        _leaderboard(),
+                        const SizedBox(height: 20),
+                        _scanCta(),
+                      ],
+                    ),
                   ),
-                ),
-        ),
-      ],
-    ),
-  );
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _ambientBlob(Color color) => ImageFiltered(
     imageFilter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
@@ -175,34 +192,43 @@ class _HomePageState extends State<HomePage> {
     required Widget child,
     double radius = 24,
     Color? tint,
-  }) => ClipRRect(
-    borderRadius: BorderRadius.circular(radius),
-    child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              (tint ?? Colors.white).withValues(alpha: .70),
-              Colors.white.withValues(alpha: .34),
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isDark
+                  ? [const Color(0xFF202842), const Color(0xFF151B30)]
+                  : [
+                      (tint ?? Colors.white).withValues(alpha: .70),
+                      Colors.white.withValues(alpha: .34),
+                    ],
+            ),
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(
+              color: isDark
+                  ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                  : Colors.white.withValues(alpha: .86),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF6373B7).withValues(alpha: .12),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
             ],
           ),
-          borderRadius: BorderRadius.circular(radius),
-          border: Border.all(color: Colors.white.withValues(alpha: .86)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF6373B7).withValues(alpha: .12),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          child: child,
         ),
-        child: child,
       ),
-    ),
-  );
+    );
+  }
 
   Widget _header() => Row(
     children: [
@@ -212,7 +238,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             Text(
               'Hi, $_name! 👋',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 19,
                 height: 1.05,
                 fontWeight: FontWeight.w800,
@@ -286,6 +312,7 @@ class _HomePageState extends State<HomePage> {
   Widget _hero() {
     final streak = _number('current_streak');
     final tokens = _number('token_balance');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: () => Navigator.of(
         context,
@@ -297,12 +324,26 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFFFFFFF), Color(0xFFDDE7FF), Color(0xFFEBD9FF)],
+            colors: isDark
+                ? [
+                    const Color(0xFF202842),
+                    const Color(0xFF181E38),
+                    const Color(0xFF241B3C),
+                  ]
+                : const [
+                    Color(0xFFFFFFFF),
+                    Color(0xFFDDE7FF),
+                    Color(0xFFEBD9FF),
+                  ],
           ),
-          border: Border.all(color: Colors.white.withValues(alpha: .9)),
+          border: Border.all(
+            color: isDark
+                ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                : Colors.white.withValues(alpha: .9),
+          ),
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF5765B8).withValues(alpha: .14),
@@ -385,7 +426,7 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 21,
                     fontWeight: FontWeight.w800,
                     color: _ink,
@@ -468,9 +509,15 @@ class _HomePageState extends State<HomePage> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: .82),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF202842)
+                : Colors.white.withValues(alpha: .82),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white),
+            border: Border.all(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                  : Colors.white,
+            ),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF4A5690).withValues(alpha: .12),
@@ -480,7 +527,7 @@ class _HomePageState extends State<HomePage> {
           ),
           child: Text(
             _pet?['name']?.toString() ?? 'ChaTatan Pet',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w900,
               color: _ink,
@@ -527,7 +574,7 @@ class _HomePageState extends State<HomePage> {
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
                 color: _ink,
@@ -631,7 +678,7 @@ class _HomePageState extends State<HomePage> {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: _ink,
                       fontWeight: FontWeight.w800,
                       fontSize: 14,
@@ -765,7 +812,7 @@ class _HomePageState extends State<HomePage> {
                         const SizedBox(width: 2),
                         Text(
                           '$attachmentCount',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: _primary,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
@@ -782,7 +829,7 @@ class _HomePageState extends State<HomePage> {
                       forum['title']?.toString() ?? 'Diskusi tanpa judul',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: _ink,
                         fontSize: 15,
                         height: 1.25,
@@ -915,10 +962,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 16),
               Text(
                 title,
-                style: const TextStyle(
-                  color: _ink,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: TextStyle(color: _ink, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
               Text(
@@ -959,7 +1003,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(width: 13),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1006,7 +1050,9 @@ class _HomePageState extends State<HomePage> {
 
   Widget _emptyStrip(IconData icon, String title, String message) => Container(
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .7),
+      color: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF181F38)
+          : Colors.white.withValues(alpha: .7),
       borderRadius: BorderRadius.circular(24),
     ),
     child: Center(
@@ -1017,7 +1063,7 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 8),
           Text(
             title,
-            style: const TextStyle(fontWeight: FontWeight.w800, color: _ink),
+            style: TextStyle(fontWeight: FontWeight.w800, color: _ink),
           ),
           const SizedBox(height: 3),
           Text(
@@ -1102,7 +1148,7 @@ class _HomePageState extends State<HomePage> {
                     color: Color(0xFFFFB51B),
                   ),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Leaderboard',
                       style: TextStyle(
@@ -1145,7 +1191,7 @@ class _HomePageState extends State<HomePage> {
                   color: const Color(0xFFF0EEFF),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
                     Icon(Icons.bar_chart_rounded, color: _primary, size: 20),
                     SizedBox(width: 8),

@@ -115,7 +115,7 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ChatatanColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: const Text('Privacy & Keamanan')),
       body: ChatatanAmbientBackground(
         child: _isLoading

@@ -432,18 +432,18 @@ class _ScanPageState extends State<ScanPage> {
       ),
     );
     return Scaffold(
-      backgroundColor: ChatatanColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: ChatatanAmbientBackground(
         child: SafeArea(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 28, 20, 116),
             children: [
-              const Text(
+              Text(
                 'AI Camera',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w800,
-                  color: ChatatanColors.ink,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 22),

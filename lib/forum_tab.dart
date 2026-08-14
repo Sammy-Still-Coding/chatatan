@@ -161,6 +161,7 @@ class _ForumTabState extends State<ForumTab> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: RefreshIndicator(
@@ -184,14 +185,18 @@ class _ForumTabState extends State<ForumTab> {
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white.withValues(alpha: .80),
-                        const Color(0xFFDCD9FF).withValues(alpha: .58),
-                      ],
+                      colors: isDark
+                          ? [const Color(0xFF202842), const Color(0xFF171C34)]
+                          : [
+                              Colors.white.withValues(alpha: .80),
+                              const Color(0xFFDCD9FF).withValues(alpha: .58),
+                            ],
                     ),
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: .9),
+                      color: isDark
+                          ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                          : Colors.white.withValues(alpha: .9),
                     ),
                   ),
                   child: Row(
@@ -272,14 +277,23 @@ class _ForumTabState extends State<ForumTab> {
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: [
-                            Colors.white.withValues(alpha: .78),
-                            const Color(0xFFDDE7FF).withValues(alpha: .42),
-                          ],
+                          colors: isDark
+                              ? [
+                                  const Color(0xFF202842),
+                                  const Color(0xFF141A30),
+                                ]
+                              : [
+                                  Colors.white.withValues(alpha: .78),
+                                  const Color(
+                                    0xFFDDE7FF,
+                                  ).withValues(alpha: .42),
+                                ],
                         ),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: .92),
+                          color: isDark
+                              ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                              : Colors.white.withValues(alpha: .92),
                         ),
                         boxShadow: [
                           BoxShadow(
@@ -366,9 +380,11 @@ class _ForumTabState extends State<ForumTab> {
 
                               Text(
                                 post['content'] ?? '',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 15,
-                                  color: Colors.black87,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
                                   height: 1.4,
                                 ),
                               ),
@@ -390,14 +406,18 @@ class _ForumTabState extends State<ForumTab> {
                                       vertical: 2,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(
-                                        alpha: .66,
-                                      ),
+                                      color: isDark
+                                          ? const Color(0xFF151B30)
+                                          : Colors.white.withValues(alpha: .66),
                                       borderRadius: BorderRadius.circular(999),
                                       border: Border.all(
-                                        color: Colors.white.withValues(
-                                          alpha: .9,
-                                        ),
+                                        color: isDark
+                                            ? const Color(
+                                                0xFF9CA9D8,
+                                              ).withValues(alpha: .22)
+                                            : Colors.white.withValues(
+                                                alpha: .9,
+                                              ),
                                       ),
                                     ),
                                     child: Row(

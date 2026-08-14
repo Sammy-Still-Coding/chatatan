@@ -78,7 +78,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: ChatatanColors.background,
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
     appBar: AppBar(title: const Text('Pengaturan Notifikasi')),
     body: ChatatanAmbientBackground(
       child: _loading

@@ -8,6 +8,7 @@ import 'login_page.dart';
 import 'save_page.dart';
 import 'notification_page.dart';
 import 'chatatan_theme.dart';
+import 'theme_controller.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -20,6 +21,25 @@ class _ProfilePageState extends State<ProfilePage> {
   final DbHelper _dbHelper = DbHelper();
   bool _isDarkMode = false;
   bool _isUploadingAvatar = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isDarkMode = ThemeController.instance.isDarkMode;
+    ThemeController.instance.addListener(_syncThemeToggle);
+  }
+
+  void _syncThemeToggle() {
+    if (mounted) {
+      setState(() => _isDarkMode = ThemeController.instance.isDarkMode);
+    }
+  }
+
+  @override
+  void dispose() {
+    ThemeController.instance.removeListener(_syncThemeToggle);
+    super.dispose();
+  }
 
   Future<void> _openHelpCenter() async {
     final uri = Uri(
@@ -135,7 +155,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ChatatanColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: ChatatanAmbientBackground(
         child: SafeArea(
           child: FutureBuilder<Map<String, dynamic>?>(
@@ -197,12 +217,12 @@ class _ProfilePageState extends State<ProfilePage> {
                     _buildStatSummary(totalNotes, discussions, xpPoints),
                     const SizedBox(height: 24),
 
-                    const Text(
+                    Text(
                       '🏅 Achievements',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1B3E),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -215,12 +235,12 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const SizedBox(height: 24),
 
-                    const Text(
+                    Text(
                       '⚙️ Settings',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1B3E),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -476,19 +496,26 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildStatCard(String number, String label, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: .82),
-            const Color(0xFFDDE7FF).withValues(alpha: .45),
-          ],
+          colors: isDark
+              ? [const Color(0xFF202842), const Color(0xFF151B30)]
+              : [
+                  Colors.white.withValues(alpha: .82),
+                  const Color(0xFFDDE7FF).withValues(alpha: .45),
+                ],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+              : Colors.white,
+        ),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF5B6CFF).withOpacity(0.07),
@@ -510,7 +537,10 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 10,
+            ),
           ),
         ],
       ),
@@ -803,18 +833,26 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildSettingsList() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: .82),
-            const Color(0xFFDDE7FF).withValues(alpha: .45),
-          ],
+          colors: isDark
+              ? [
+                  const Color(0xFF27304E).withValues(alpha: .88),
+                  const Color(0xFF151B34).withValues(alpha: .94),
+                ]
+              : [
+                  Colors.white.withValues(alpha: .82),
+                  const Color(0xFFDDE7FF).withValues(alpha: .45),
+                ],
         ),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: .14) : Colors.white,
+        ),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF5B6CFF).withOpacity(0.06),
@@ -832,10 +870,17 @@ class _ProfilePageState extends State<ProfilePage> {
               height: 24,
               child: Switch(
                 value: _isDarkMode,
-                onChanged: (val) {
-                  setState(() {
-                    _isDarkMode = val;
-                  });
+                onChanged: (val) async {
+                  try {
+                    await ThemeController.instance.setDarkMode(val);
+                  } catch (_) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Gagal menyimpan pengaturan tema.'),
+                      ),
+                    );
+                  }
                 },
                 activeColor: const Color(0xFF5B6CFF),
               ),
@@ -936,8 +981,8 @@ class _ProfilePageState extends State<ProfilePage> {
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
-                  color: Color(0xFF1A1B3E),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),

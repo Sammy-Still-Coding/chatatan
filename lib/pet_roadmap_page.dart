@@ -22,7 +22,7 @@ class _PetRoadmapPageState extends State<PetRoadmapPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: ChatatanColors.background,
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
     appBar: AppBar(title: const Text('Roadmap Pet & Streak')),
     body: ChatatanAmbientBackground(
       child: FutureBuilder<Map<String, dynamic>>(

@@ -48,7 +48,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: ChatatanColors.background,
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
     appBar: AppBar(title: const Text('Top 100 Leaderboard')),
     body: ChatatanAmbientBackground(
       child: _loading

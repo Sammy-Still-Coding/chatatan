@@ -255,7 +255,7 @@ class _AiChatPageState extends State<AiChatPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: ChatatanColors.background,
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
     appBar: AppBar(title: const Text('ChaTatan AI')),
     body: ChatatanAmbientBackground(
       child: Column(
@@ -301,16 +301,29 @@ class _AiChatPageState extends State<AiChatPage> {
                                 : LinearGradient(
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
-                                    colors: [
-                                      Colors.white.withValues(alpha: .84),
-                                      const Color(
-                                        0xFFDDE7FF,
-                                      ).withValues(alpha: .52),
-                                    ],
+                                    colors:
+                                        Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? [
+                                            const Color(0xFF202842),
+                                            const Color(0xFF151B30),
+                                          ]
+                                        : [
+                                            Colors.white.withValues(alpha: .84),
+                                            const Color(
+                                              0xFFDDE7FF,
+                                            ).withValues(alpha: .52),
+                                          ],
                                   ),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: .84),
+                              color:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const Color(
+                                      0xFF9CA9D8,
+                                    ).withValues(alpha: .22)
+                                  : Colors.white.withValues(alpha: .84),
                             ),
                             boxShadow: [
                               BoxShadow(
@@ -329,7 +342,10 @@ class _AiChatPageState extends State<AiChatPage> {
                                 AttachmentPreviewTile(
                                   url: url,
                                   name: file,
-                                  dark: mine,
+                                  dark:
+                                      mine ||
+                                      Theme.of(context).brightness ==
+                                          Brightness.dark,
                                 ),
                                 const SizedBox(height: 8),
                               ],
@@ -348,8 +364,10 @@ class _AiChatPageState extends State<AiChatPage> {
                                           MarkdownStyleSheet.fromTheme(
                                             Theme.of(context),
                                           ).copyWith(
-                                            p: const TextStyle(
-                                              color: Colors.black87,
+                                            p: TextStyle(
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurface,
                                               height: 1.35,
                                             ),
                                             strong: const TextStyle(
@@ -467,9 +485,15 @@ class _AiChatPageState extends State<AiChatPage> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFFECE9FF).withValues(alpha: .82),
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF202842)
+                    : const Color(0xFFECE9FF).withValues(alpha: .82),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withValues(alpha: .8)),
+                border: Border.all(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                      : Colors.white.withValues(alpha: .8),
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,

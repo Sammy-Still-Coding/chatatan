@@ -522,21 +522,24 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
         (_post!['like_count'] as int? ?? 0) -
         (_post!['dislike_count'] as int? ?? 0);
     final repliesCount = _replies.length;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: ChatatanColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Detail Forum',
           style: TextStyle(
-            color: Colors.black,
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0.5,
-        iconTheme: const IconThemeData(color: Colors.black),
+        iconTheme: IconThemeData(
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
       ),
       body: Column(
         children: [
@@ -551,14 +554,18 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [
-                          Colors.white.withValues(alpha: .66),
-                          const Color(0xFFDDE7FF).withValues(alpha: .34),
-                        ],
+                        colors: isDark
+                            ? [const Color(0xFF202842), const Color(0xFF151B30)]
+                            : [
+                                Colors.white.withValues(alpha: .66),
+                                const Color(0xFFDDE7FF).withValues(alpha: .34),
+                              ],
                       ),
                       borderRadius: BorderRadius.circular(22),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: .9),
+                        color: isDark
+                            ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                            : Colors.white.withValues(alpha: .9),
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -646,10 +653,10 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                         ],
                         Text(
                           _post!['content'] ?? '',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             height: 1.4,
-                            color: Colors.black87,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                         _buildAttachments(),
@@ -727,12 +734,12 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                   ),
 
                   const SizedBox(height: 20),
-                  const Text(
+                  Text(
                     'Balasan',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -766,14 +773,23 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                           gradient: LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
-                            colors: [
-                              Colors.white.withValues(alpha: .70),
-                              const Color(0xFFDDE7FF).withValues(alpha: .34),
-                            ],
+                            colors: isDark
+                                ? [
+                                    const Color(0xFF202842),
+                                    const Color(0xFF151B30),
+                                  ]
+                                : [
+                                    Colors.white.withValues(alpha: .70),
+                                    const Color(
+                                      0xFFDDE7FF,
+                                    ).withValues(alpha: .34),
+                                  ],
                           ),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: .9),
+                            color: isDark
+                                ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                                : Colors.white.withValues(alpha: .9),
                           ),
                           boxShadow: [
                             BoxShadow(

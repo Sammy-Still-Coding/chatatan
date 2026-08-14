@@ -1050,13 +1050,17 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
   /// Tampilan konten pesan berdasarkan tipe (TEXT, IMAGE, FILE)
   Widget _buildMessageContent(String content, String type, bool isMe) {
     if (type == 'IMAGE' || type == 'FILE') {
-      return AttachmentPreviewTile(url: content, dark: isMe);
+      return AttachmentPreviewTile(
+        url: content,
+        dark:
+            isMe || Theme.of(context).brightness == Brightness.dark,
+      );
     }
 
     return Text(
       content,
       style: TextStyle(
-        color: isMe ? Colors.white : Colors.black87,
+        color: isMe ? Colors.white : Theme.of(context).colorScheme.onSurface,
         fontSize: 15,
       ),
     );
@@ -1131,16 +1135,19 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: ChatatanColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         flexibleSpace: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFFF1EEFF), Color(0xFFE2E5FF)],
+              colors: isDark
+                  ? [const Color(0xFF202842), const Color(0xFF151B30)]
+                  : [const Color(0xFFF1EEFF), const Color(0xFFE2E5FF)],
             ),
           ),
         ),
@@ -1166,10 +1173,10 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                         _roomSubtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
-                          color: Color(0xFF6D7090),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                   ],
@@ -1325,16 +1332,25 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                                 : LinearGradient(
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
-                                    colors: [
-                                      Colors.white.withValues(alpha: .86),
-                                      const Color(
-                                        0xFFDDE7FF,
-                                      ).withValues(alpha: .56),
-                                    ],
+                                    colors: isDark
+                                        ? [
+                                            const Color(0xFF202842),
+                                            const Color(0xFF151B30),
+                                          ]
+                                        : [
+                                            Colors.white.withValues(alpha: .86),
+                                            const Color(
+                                              0xFFDDE7FF,
+                                            ).withValues(alpha: .56),
+                                          ],
                                   ),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: .86),
+                              color: isDark
+                                  ? const Color(
+                                      0xFF9CA9D8,
+                                    ).withValues(alpha: .22)
+                                  : Colors.white.withValues(alpha: .86),
                             ),
                             boxShadow: [
                               BoxShadow(
@@ -1367,7 +1383,11 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                               Text(
                                 timeStr,
                                 style: TextStyle(
-                                  color: isMe ? Colors.white70 : Colors.black54,
+                                  color: isMe
+                                      ? Colors.white70
+                                      : Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                   fontSize: 10,
                                 ),
                               ),
@@ -1424,17 +1444,27 @@ class _CommunityChatPageState extends State<CommunityChatPage> {
                               vertical: 11,
                             ),
                             filled: true,
-                            fillColor: Colors.white.withValues(alpha: .54),
+                            fillColor: isDark
+                                ? const Color(0xFF151B30)
+                                : Colors.white.withValues(alpha: .54),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(22),
                               borderSide: BorderSide(
-                                color: Colors.white.withValues(alpha: .78),
+                                color: isDark
+                                    ? const Color(
+                                        0xFF9CA9D8,
+                                      ).withValues(alpha: .22)
+                                    : Colors.white.withValues(alpha: .78),
                               ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(22),
                               borderSide: BorderSide(
-                                color: Colors.white.withValues(alpha: .78),
+                                color: isDark
+                                    ? const Color(
+                                        0xFF9CA9D8,
+                                      ).withValues(alpha: .22)
+                                    : Colors.white.withValues(alpha: .78),
                               ),
                             ),
                           ),

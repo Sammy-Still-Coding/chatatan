@@ -1143,6 +1143,7 @@ class LibraryPageState extends State<LibraryPage> {
   // ============================================================
 
   Widget _buildLibraryItem(Map<String, dynamic> item) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final title = item['title']?.toString() ?? 'Untitled';
 
     final description = item['description']?.toString() ?? '';
@@ -1172,13 +1173,19 @@ class LibraryPageState extends State<LibraryPage> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: .78),
-            const Color(0xFFDDE7FF).withValues(alpha: .46),
-          ],
+          colors: isDark
+              ? [const Color(0xFF202842), const Color(0xFF141A30)]
+              : [
+                  Colors.white.withValues(alpha: .78),
+                  const Color(0xFFDDE7FF).withValues(alpha: .46),
+                ],
         ),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: .9)),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+              : Colors.white.withValues(alpha: .9),
+        ),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF6678BE).withValues(alpha: .10),
@@ -1535,6 +1542,7 @@ class LibraryPageState extends State<LibraryPage> {
   }
 
   Widget _buildFolderCarousel() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final query = _searchQuery.trim().toLowerCase();
     final folders = _folders.where((folder) {
       return query.isEmpty ||
@@ -1581,14 +1589,18 @@ class LibraryPageState extends State<LibraryPage> {
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [
-                          Colors.white.withValues(alpha: .80),
-                          const Color(0xFFDDE7FF).withValues(alpha: .46),
-                        ],
+                        colors: isDark
+                            ? [const Color(0xFF202842), const Color(0xFF141A30)]
+                            : [
+                                Colors.white.withValues(alpha: .80),
+                                const Color(0xFFDDE7FF).withValues(alpha: .46),
+                              ],
                       ),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: .92),
+                        color: isDark
+                            ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                            : Colors.white.withValues(alpha: .92),
                       ),
                     ),
                     child: Row(
@@ -1668,13 +1680,13 @@ class LibraryPageState extends State<LibraryPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ChatatanColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: ChatatanAmbientBackground(
         child: SafeArea(
           child: Column(
             children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 28, 20, 20),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -1682,7 +1694,7 @@ class LibraryPageState extends State<LibraryPage> {
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
-                      color: ChatatanColors.ink,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -2042,7 +2054,7 @@ class _LibraryFolderPageState extends State<LibraryFolderPage> {
           fileName.contains(query);
     }).toList();
     return Scaffold(
-      backgroundColor: ChatatanColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(name),
         backgroundColor: Colors.transparent,
