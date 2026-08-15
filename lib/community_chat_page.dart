@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'attachment_preview.dart';
@@ -275,7 +277,6 @@ Future<void> _loadRoomInfo() async {
   }
 
   Future<void> _renameGroup() async {
-    if (!_isGroupManager) return;
     final controller = TextEditingController(text: _roomTitle);
     final saved = await showDialog<bool>(
       context: context,
@@ -294,19 +295,37 @@ Future<void> _loadRoomInfo() async {
         ],
       ),
     );
+
+    // Jika dibatalkan, dispose controller dan hentikan fungsi
+    if (saved != true) {
+      controller.dispose();
+      return;
+    }
+
     final title = controller.text.trim();
-    controller.dispose();
-    if (saved != true || title.isEmpty) return;
-    await _supabase.rpc(
-      'update_group_profile',
-      params: {
-        'p_conversation_id': _convIdInt,
-        'p_title': title,
-        'p_avatar_url': null,
-      },
-    );
-    if (!mounted) return;
-    setState(() => _roomTitle = title);
+    if (title.isEmpty) {
+      controller.dispose();
+      return;
+    }
+
+    // Gunakan blok try-finally agar dispose dieksekusi setelah proses async (database) selesai, 
+    // memberi jeda waktu agar widget TextField di dialog benar-benar sudah hilang.
+    try {
+      await _supabase.rpc(
+        'update_group_profile',
+        params: {
+          'p_conversation_id': _convIdInt,
+          'p_title': title,
+          'p_avatar_url': null,
+        },
+      );
+      
+      if (mounted) {
+        setState(() => _roomTitle = title);
+      }
+    } finally {
+      controller.dispose(); 
+    }
   }
 
   Widget _roomAvatar({double radius = 20}) {
@@ -486,6 +505,98 @@ Future<void> _loadRoomInfo() async {
     }
   }
 
+  /// Mengambil gambar langsung dari Gallery internal
+  Future<void> _pickAndSendImageFromGallery() async {
+    if (_isUploading) return;
+
+    final image = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+
+    if (image == null) return;
+
+    setState(() => _isUploading = true);
+
+    try {
+      final imageLocator = await _dbHelper.uploadChatAttachment(
+        _convIdInt,
+        File(image.path),
+      );
+
+      await _supabase.from('messages').insert({
+        'conversation_id': _convIdInt,
+        'sender_id': currentUserId,
+        'message_type': 'IMAGE',
+        'content': imageLocator,
+        'status': 'SENT',
+      });
+
+      await _supabase
+          .from('conversations')
+          .update({'updated_at': DateTime.now().toIso8601String()})
+          .eq('id', _convIdInt);
+
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal mengirim gambar: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+/// Mengambil dokumen/file apa saja dari memori internal HP
+  Future<void> _pickAndSendFileFromDevice() async {
+    if (_isUploading) return;
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any, 
+      );
+
+      if (result == null || result.files.isEmpty) return;
+      
+      final filePath = result.files.single.path;
+      if (filePath == null) return;
+
+      setState(() => _isUploading = true);
+
+      // Menggunakan fungsi upload chat yang aman dan benar
+      final fileLocator = await _dbHelper.uploadChatAttachment(_convIdInt, File(filePath)); 
+
+      final extension = result.files.single.extension?.toLowerCase() ?? '';
+      final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension);
+      final messageType = isImage ? 'IMAGE' : 'FILE';
+
+      await _supabase.from('messages').insert({
+        'conversation_id': _convIdInt,
+        'sender_id': currentUserId,
+        'message_type': messageType,
+        'content': fileLocator,
+        'status': 'SENT',
+      });
+
+      await _supabase
+          .from('conversations')
+          .update({'updated_at': DateTime.now().toIso8601String()})
+          .eq('id', _convIdInt);
+
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal mengirim file: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
   /// Modal Pilihan Jenis Lampiran
   void _showAttachmentOptions() {
     showModalBottomSheet(
@@ -499,6 +610,30 @@ Future<void> _loadRoomInfo() async {
             children: [
               ListTile(
                 leading: const Icon(
+                  Icons.image_outlined,
+                  color: Color(0xFF6C63FF),
+                ),
+                title: const Text('Kirim Foto dari Galeri'),
+                subtitle: const Text('Pilih gambar atau foto dari HP'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickAndSendImageFromGallery();
+                },
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.folder_open_rounded,
+                  color: Color(0xFF6C63FF),
+                ),
+                title: const Text('Kirim Dokumen dari HP'),
+                subtitle: const Text('Pilih file PDF, Word, atau dokumen lain'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickAndSendFileFromDevice(); // Ini fungsi baru untuk file bebas
+                },
+              ),
+              ListTile(
+                leading: const Icon(
                   Icons.folder_copy_outlined,
                   color: Color(0xFF6C63FF),
                 ),
@@ -508,7 +643,7 @@ Future<void> _loadRoomInfo() async {
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickAndSendFile();
+                  _pickAndSendFile(); // Fungsi asli dari Library
                 },
               ),
             ],
@@ -1248,16 +1383,18 @@ Future<void> _loadRoomInfo() async {
                   value: 'group_avatar',
                   child: Text('Ganti foto grup'),
                 ),
-              if (_isGroupManager)
+              // --- Bagian yang diubah ---
+              if (widget.isGroup)
                 const PopupMenuItem(
                   value: 'rename_group',
                   child: Text('Ubah nama grup'),
-                )
-              else
+                ),
+              if (!widget.isGroup)
                 const PopupMenuItem(
                   value: 'nickname',
                   child: Text('Atur nama panggilan'),
                 ),
+              // ---------------------------
               const PopupMenuItem(
                 value: 'details',
                 child: Text('Info chat / grup'),

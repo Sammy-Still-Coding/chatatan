@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
@@ -2122,6 +2123,37 @@ class DbHelper {
       print('Error uploadAvatar: $e');
       return null;
     }
+  }
+
+  // ============================================================
+  // UPLOAD LAMPIRAN CHAT
+  // ============================================================
+  
+  Future<String> uploadChatAttachment(int conversationId, File file) async {
+    final user = currentUser;
+    if (user == null) throw Exception('User belum login.');
+
+    final bytes = await file.readAsBytes();
+    final originalName = p.basename(file.path);
+
+    // Langsung gunakan fungsi upload Library yang sudah memiliki izin RLS yang sah
+    final uploadResult = await uploadLibraryFile(
+      bytes: bytes,
+      fileName: originalName,
+      title: originalName,
+      description: 'Lampiran chat',
+      sourceType: 'UPLOAD',
+    );
+
+    // Ambil storage_path dari file yang berhasil di-upload
+    final fileRecord = uploadResult['file'];
+    final storagePath = fileRecord['storage_path']?.toString();
+
+    if (storagePath == null || storagePath.isEmpty) {
+      throw Exception('Gagal mendapatkan path file.');
+    }
+
+    return 'library://$storagePath';
   }
 
   // ============================================================
