@@ -2136,24 +2136,23 @@ class DbHelper {
     final bytes = await file.readAsBytes();
     final originalName = p.basename(file.path);
 
-    // Langsung gunakan fungsi upload Library yang sudah memiliki izin RLS yang sah
-    final uploadResult = await uploadLibraryFile(
-      bytes: bytes,
-      fileName: originalName,
-      title: originalName,
-      description: 'Lampiran chat',
-      sourceType: 'UPLOAD',
-    );
+    var extension = p.extension(originalName).replaceFirst('.', '').toLowerCase();
+    if (extension == 'jpeg') extension = 'jpg';
+    if (extension.isEmpty) throw Exception('Ekstensi file tidak ditemukan.');
 
-    // Ambil storage_path dari file yang berhasil di-upload
-    final fileRecord = uploadResult['file'];
-    final storagePath = fileRecord['storage_path']?.toString();
+    // Path khusus penyimpanan chat
+    final fileUuid = const Uuid().v4();
+    final storagePath = 'chats/$conversationId/$fileUuid.$extension';
+    final mimeType = _getMimeType(extension);
 
-    if (storagePath == null || storagePath.isEmpty) {
-      throw Exception('Gagal mendapatkan path file.');
-    }
+    // Upload langsung ke bucket chat-files (bukan chatatan-files)
+    await _client.storage.from('chat-files').uploadBinary(
+          storagePath,
+          bytes,
+          fileOptions: FileOptions(contentType: mimeType, upsert: false),
+        );
 
-    return 'library://$storagePath';
+    return 'chat-files://$storagePath';
   }
 
   // ============================================================
