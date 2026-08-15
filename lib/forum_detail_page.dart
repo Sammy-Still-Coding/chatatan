@@ -88,8 +88,18 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
         // Migration lama tetap dapat membuka detail forum.
       }
 
-      // Ambil status bookmark awal
+      // Ambil status bookmark awal postingan
       final isBookmarked = await _dbHelper.isForumPostBookmarked(widget.postId);
+
+      // ------------------------------------------------------------------------
+      // [PERBAIKAN] Ambil ID attachment yang sudah pernah disimpan pengguna
+      // ------------------------------------------------------------------------
+      Set<int> savedAttachmentIds = {};
+      try {
+        savedAttachmentIds = await _dbHelper.getSavedForumAttachmentIds(widget.postId);
+      } catch (_) {
+        // Jika helper belum tersedia/error, biarkan kosong agar tidak crash
+      }
 
       if (!mounted) return;
       setState(() {
@@ -101,6 +111,11 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
         _likedReplyIds
           ..clear()
           ..addAll(likedReplyIds);
+        
+        // Update state savedAttachmentIds agar warna ikon tetap ungu setelah refresh
+        _savedAttachmentIds
+          ..clear()
+          ..addAll(savedAttachmentIds);
       });
     } catch (e) {
       debugPrint('Error load detail: $e');

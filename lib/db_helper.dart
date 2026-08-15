@@ -2177,4 +2177,33 @@ class DbHelper {
 
     return List<Map<String, dynamic>>.from(response);
   }
+  Future<Set<int>> getSavedForumAttachmentIds(int postId) async {
+    final user = currentUser;
+    if (user == null) return {};
+
+    try {
+      // Ambil target_id hanya untuk file yang belum dihapus (deleted_at IS NULL)
+      final response = await _client
+          .from('library_shares')
+          .select('''
+            target_id,
+            library_items!inner(deleted_at)
+          ''')
+          .eq('shared_by', user.id)
+          .eq('target_type', 'FORUM')
+          .isFilter('library_items.deleted_at', null);
+
+      final Set<int> savedIds = {};
+      for (final row in response) {
+        final id = int.tryParse(row['target_id']?.toString() ?? '');
+        if (id != null) {
+          savedIds.add(id);
+        }
+      }
+      return savedIds;
+    } catch (e) {
+      print('Error getSavedForumAttachmentIds: $e');
+      return {};
+    }
+  }
 }
