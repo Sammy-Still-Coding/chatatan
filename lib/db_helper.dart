@@ -2159,6 +2159,35 @@ class DbHelper {
     return publicUrl; 
   }
 
+  Future<String> getChatSharedLibraryUrl(String fileLocator) async {
+    final fileId = int.tryParse(fileLocator);
+    // Jika locator bukan berupa ID angka (mungkin sudah URL), kembalikan aslinya
+    if (fileId == null) return fileLocator; 
+
+    try {
+      // 1. Ambil storage path dari tabel files milikmu
+      final response = await _client
+          .from('files')
+          .select('storage_path')
+          .eq('id', fileId)
+          .single();
+
+      final storagePath = response['storage_path']?.toString();
+      if (storagePath == null || storagePath.isEmpty) return fileLocator;
+
+      // 2. Buat Signed URL berumur 10 tahun (60 * 60 * 24 * 365 * 10 detik)
+      // Ini mengizinkan siapapun di chat untuk melihat gambar tanpa merusak privasi RLS
+      final signedUrl = await _client.storage
+          .from('chatatan-files')
+          .createSignedUrl(storagePath, 315360000);
+
+      return signedUrl;
+    } catch (e) {
+      // Jika terjadi error, kembalikan locator aslinya sebagai fallback
+      return fileLocator;
+    }
+  }
+
   // ============================================================
   // BOOKMARK POSTINGAN FORUM
   // ============================================================
