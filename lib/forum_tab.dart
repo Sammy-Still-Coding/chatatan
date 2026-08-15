@@ -598,12 +598,21 @@ class _ForumTabState extends State<ForumTab> {
         ),
       );
     }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F6FF),
-        borderRadius: BorderRadius.circular(12),
+        color: isDark
+            ? const Color(0xFF151B30).withValues(alpha: .60)
+            : Colors.white.withValues(alpha: .70),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+              : Colors.white.withValues(alpha: .9),
+        ),
       ),
       child: Row(
         children: [
@@ -614,7 +623,10 @@ class _ForumTabState extends State<ForumTab> {
               file['original_name']?.toString() ?? 'Lampiran',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87,),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
           ),
           const SizedBox(width: 8),

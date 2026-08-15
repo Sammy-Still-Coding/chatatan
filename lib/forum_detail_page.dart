@@ -33,6 +33,7 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
 
   // UI State untuk Bookmark
   bool _isBookmarked = false;
+  final Set<int> _savedAttachmentIds = {};
 
   @override
   void initState() {
@@ -178,9 +179,14 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
         folderName: folderName,
       );
       if (mounted) {
+        // Update state agar ikon berubah warna jadi terisi (filled bookmark)
+        setState(() {
+          _savedAttachmentIds.add(attachmentId);
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('File disimpan ke Library › Dari Forum'),
+            content: Text('File disimpan ke Library'),
           ),
         );
       }
@@ -303,19 +309,26 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
 
   Widget _buildAttachments() {
     if (_attachments.isEmpty) return const SizedBox.shrink();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'File dibagikan',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
         ),
         const SizedBox(height: 8),
         ..._attachments.map((attachment) {
           final file = attachment['files'] is Map
               ? Map<String, dynamic>.from(attachment['files'] as Map)
               : <String, dynamic>{};
+          final attachmentId = int.tryParse(attachment['id'].toString()) ?? 0;
+          final isSaved = _savedAttachmentIds.contains(attachmentId);
           final status = attachment['curation_status']?.toString() ?? 'PENDING';
           final score = attachment['relevance_score'];
           final label = attachment['relevance_label']?.toString();
@@ -328,9 +341,20 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
               : status == 'FAILED'
               ? Colors.red
               : Colors.orange;
-          return Card(
+
+          return Container(
             margin: const EdgeInsets.only(bottom: 8),
-            color: const Color(0xFFF8F8FF),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? const Color(0xFF151B30).withValues(alpha: .60)
+                  : Colors.white.withValues(alpha: .70),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark
+                    ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                    : Colors.white.withValues(alpha: .9),
+              ),
+            ),
             child: ListTile(
               onTap: file['storage_path'] == null
                   ? null
@@ -348,10 +372,15 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                     },
               leading: const Icon(
                 Icons.description_outlined,
-                color: Color(0xFF6C5CE7),
+                color: ChatatanColors.primary,
               ),
-              title: Text(file['original_name']?.toString() ?? 'File',
-              style: const TextStyle(color: Colors.black87)),
+              title: Text(
+                file['original_name']?.toString() ?? 'File',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -372,32 +401,42 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                           score.toString() +
                           '/100' +
                           (label == null ? '' : ' · ' + label),
+                      style: TextStyle(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: .7),
+                      ),
                     ),
                   if ((attachment['curation_feedback']?.toString() ?? '')
                       .isNotEmpty)
                     Text(attachment['curation_feedback'].toString()),
                 ],
               ),
-              trailing: Column(
+              trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    tooltip: passed
-                        ? 'Simpan ke Library'
-                        : 'Belum dapat disimpan',
+                    tooltip: isSaved
+                        ? 'Tersimpan di Library'
+                        : (passed ? 'Simpan ke Library' : 'Belum dapat disimpan'),
                     onPressed: passed
-                        ? () => _saveAttachmentToLibrary(
-                            int.parse(attachment['id'].toString()),
-                          )
+                        ? () => _saveAttachmentToLibrary(attachmentId)
                         : null,
-                    icon: const Icon(Icons.library_add_outlined),
+                    icon: Icon(
+                      // Menggunakan library_add khas simpan file
+                      isSaved
+                          ? Icons.library_add
+                          : Icons.library_add_outlined,
+                      color: isSaved
+                          ? const Color(0xFF6C63FF) // Warna ungu saat tersimpan
+                          : (passed ? Colors.grey : Colors.grey.withValues(alpha: .3)),
+                    ),
                   ),
                   if (status == 'PENDING' && isOwner)
                     IconButton(
                       tooltip: 'Ulangi kurasi AI',
-                      onPressed: () => _retryAttachmentCuration(
-                        int.parse(attachment['id'].toString()),
-                      ),
+                      onPressed: () => _retryAttachmentCuration(attachmentId),
                       icon: const Icon(Icons.refresh_rounded),
                     ),
                 ],
@@ -665,7 +704,23 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
 
                         Row(
                           children: [
-                            Column(
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? const Color(0xFF151B30)
+                                  : Colors.white.withValues(alpha: .66),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: isDark
+                                    ? const Color(0xFF9CA9D8).withValues(alpha: .22)
+                                    : Colors.white.withValues(alpha: .9),
+                              ),
+                            ),
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
@@ -673,7 +728,8 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                   visualDensity: VisualDensity.compact,
                                   onPressed: () => _togglePostVote('LIKE'),
                                   icon: Icon(
-                                    Icons.keyboard_arrow_up_rounded,
+                                    Icons.arrow_upward_rounded,
+                                    size: 24,
                                     color: _postVote == 'LIKE'
                                         ? const Color(0xFF6C63FF)
                                         : Colors.grey,
@@ -681,8 +737,11 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                 ),
                                 Text(
                                   '$score',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.bold,
+                                    color: _postVote == null
+                                        ? Colors.grey.shade700
+                                        : const Color(0xFF6C63FF),
                                   ),
                                 ),
                                 IconButton(
@@ -690,7 +749,8 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                   visualDensity: VisualDensity.compact,
                                   onPressed: () => _togglePostVote('DISLIKE'),
                                   icon: Icon(
-                                    Icons.keyboard_arrow_down_rounded,
+                                    Icons.arrow_downward_rounded,
+                                    size: 24,
                                     color: _postVote == 'DISLIKE'
                                         ? Colors.redAccent
                                         : Colors.grey,
@@ -698,6 +758,7 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                 ),
                               ],
                             ),
+                          ),
                             const SizedBox(width: 20),
                             Row(
                               children: [
@@ -876,83 +937,83 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
                                               attachment['files'] as Map,
                                             )
                                           : <String, dynamic>{};
+                                      final replyAttId = int.tryParse(attachment['id'].toString()) ?? 0;
+                                      final isReplyAttSaved = _savedAttachmentIds.contains(replyAttId);
+
                                       return Container(
                                         margin: const EdgeInsets.only(top: 8),
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
+                                          horizontal: 12,
                                           vertical: 6,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFFF5F6FB),
-                                          borderRadius: BorderRadius.circular(
-                                            10,
+                                          color: isDark
+                                              ? const Color(0xFF151B30).withValues(alpha: .60)
+                                              : Colors.white.withValues(alpha: .70),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: isDark
+                                                ? const Color(0xFF9CA9D8).withValues(alpha: .20)
+                                                : Colors.white.withValues(alpha: .8),
                                           ),
                                         ),
                                         child: Row(
                                           children: [
                                             Icon(
-                                              (file['mime_type']?.toString() ??
-                                                          '')
+                                              (file['mime_type']?.toString() ?? '')
                                                       .startsWith('image/')
                                                   ? Icons.image_outlined
                                                   : Icons.attach_file_rounded,
                                               size: 18,
-                                              color: const Color(0xFF6C5CE7),
+                                              color: ChatatanColors.primary,
                                             ),
                                             const SizedBox(width: 8),
                                             Expanded(
                                               child: InkWell(
-                                                onTap:
-                                                    file['storage_path'] == null
+                                                onTap: file['storage_path'] == null
                                                     ? null
                                                     : () async {
-                                                        final url = await _dbHelper
-                                                            .getLibraryFileUrl(
-                                                              file['storage_path']
-                                                                  .toString(),
-                                                            );
-                                                        if (mounted)
+                                                        final url = await _dbHelper.getLibraryFileUrl(
+                                                          file['storage_path'].toString(),
+                                                        );
+                                                        if (mounted) {
                                                           await openAttachmentPreview(
                                                             context,
                                                             url: url,
-                                                            name:
-                                                                file['original_name']
-                                                                    ?.toString(),
+                                                            name: file['original_name']?.toString(),
                                                           );
+                                                        }
                                                       },
                                                 child: Text(
-                                                  file['original_name']
-                                                          ?.toString() ??
-                                                      'Lampiran balasan',
+                                                  file['original_name']?.toString() ?? 'Lampiran balasan',
                                                   maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: const TextStyle(
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
                                                     fontSize: 12,
-                                                    decoration: TextDecoration
-                                                        .underline,
-                                                        color: Colors.black87,
+                                                    decoration: TextDecoration.underline,
+                                                    color: Theme.of(context).colorScheme.onSurface,
                                                   ),
                                                 ),
                                               ),
                                             ),
                                             IconButton(
-                                              tooltip: 'Simpan ke Library',
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                              onPressed: () =>
-                                                  _saveAttachmentToLibrary(
-                                                    int.parse(
-                                                      attachment['id']
-                                                          .toString(),
-                                                    ),
-                                                    folderName:
-                                                        'Dari Balasan Forum',
-                                                  ),
-                                              icon: const Icon(
-                                                Icons.bookmark_add_outlined,
-                                                size: 19,
-                                                color: Color(0xFF6C5CE7),
+                                              tooltip: isReplyAttSaved
+                                                  ? 'Tersimpan di Library'
+                                                  : 'Simpan ke Library',
+                                              visualDensity: VisualDensity.compact,
+                                              onPressed: () => _saveAttachmentToLibrary(
+                                                replyAttId,
+                                                folderName: 'Dari Balasan Forum',
+                                              ),
+                                              icon: Icon(
+                                                // Menggunakan library_add untuk lampiran balasan
+                                                isReplyAttSaved
+                                                    ? Icons.library_add
+                                                    : Icons.library_add_outlined,
+                                                size: 20,
+                                                color: isReplyAttSaved
+                                                    ? const Color(0xFF6C63FF) // Warna ungu saat tersimpan
+                                                    : Colors.grey,
                                               ),
                                             ),
                                           ],
@@ -1034,131 +1095,185 @@ class _ForumDetailPageState extends State<ForumDetailPage> {
               ),
             ),
           ),
-
-          Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 4,
-                  offset: Offset(0, -2),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_replyingTo != null)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEDF2FF),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Membalas @${_replyingTo!['username']}',
-                            style: const TextStyle(
-                              color: Color(0xFF4C6EF5),
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+              child: ChatatanGlass(
+                radius: 25,
+                opacity: .76,
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Indikator Membalas Pesan
+                    if (_replyingTo != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8, left: 4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
                           ),
-                          const SizedBox(width: 6),
-                          InkWell(
-                            onTap: _cancelReplying,
-                            child: const Icon(
-                              Icons.close,
-                              size: 16,
-                              color: Color(0xFF4C6EF5),
-                            ),
+                          decoration: BoxDecoration(
+                            color: ChatatanColors.primary.withValues(alpha: .15),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        ],
-                      ),
-                    ),
-
-                  if (_selectedReplyLibraryItems.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: _selectedReplyLibraryItems
-                            .map(
-                              (item) => InputChip(
-                                label: Text(
-                                  item['title']?.toString() ?? 'File Library',
-                                  overflow: TextOverflow.ellipsis,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Membalas @${_replyingTo!['username']}',
+                                style: const TextStyle(
+                                  color: ChatatanColors.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                onDeleted: () => setState(() {
-                                  _selectedReplyLibraryItems.removeWhere(
-                                    (selected) =>
-                                        selected['id'].toString() ==
-                                        item['id'].toString(),
-                                  );
-                                }),
                               ),
-                            )
-                            .toList(),
-                      ),
-                    ),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _replyController,
-                          focusNode: _focusNode,
-                          decoration: InputDecoration(
-                            hintText: _replyingTo != null
-                                ? 'Balas @${_replyingTo!['username']}...'
-                                : 'Tulis balasan...',
-                            hintStyle: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 14,
-                            ),
-                            filled: true,
-                            fillColor: const Color(0xFFF5F6FB),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide.none,
-                            ),
+                              const SizedBox(width: 6),
+                              InkWell(
+                                onTap: _cancelReplying,
+                                child: const Icon(
+                                  Icons.close,
+                                  size: 16,
+                                  color: ChatatanColors.primary,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        tooltip: 'Pilih file atau foto dari Library',
-                        icon: const Icon(
-                          Icons.attach_file_rounded,
-                          color: Color(0xFF6C5CE7),
+
+                    // Indikator File yang Dipilih dari Library
+                    if (_selectedReplyLibraryItems.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8, left: 4),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: _selectedReplyLibraryItems
+                              .map(
+                                (item) => Chip(
+                                  backgroundColor: ChatatanColors.primary
+                                      .withValues(alpha: .15),
+                                  deleteIconColor: ChatatanColors.primary,
+                                  side: BorderSide.none,
+                                  label: Text(
+                                    item['title']?.toString() ?? 'File Library',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface,
+                                    ),
+                                  ),
+                                  onDeleted: () => setState(() {
+                                    _selectedReplyLibraryItems.removeWhere(
+                                      (selected) =>
+                                          selected['id'].toString() ==
+                                          item['id'].toString(),
+                                    );
+                                  }),
+                                ),
+                              )
+                              .toList(),
                         ),
-                        onPressed: _pickReplyFilesFromLibrary,
                       ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.send_rounded,
-                          color: Color(0xFF6C5CE7),
+
+                    // Input Pesan & Tombol-tombol Aksi
+                    Row(
+                      children: [
+                        // Tombol Lampiran (Hanya buka Library)
+                        ChatatanGlass(
+                          radius: 22,
+                          opacity: .60,
+                          padding: const EdgeInsets.all(10),
+                          onTap: _pickReplyFilesFromLibrary,
+                          child: const Icon(
+                            Icons.attach_file_rounded,
+                            color: ChatatanColors.primary,
+                            size: 22,
+                          ),
                         ),
-                        onPressed: _sendReply,
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: TextField(
+                            controller: _replyController,
+                            focusNode: _focusNode,
+                            textCapitalization: TextCapitalization.sentences,
+                            minLines: 1,
+                            maxLines: 4,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: _replyingTo != null
+                                  ? 'Balas @${_replyingTo!['username']}...'
+                                  : 'Tulis balasan...',
+                              hintStyle: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant
+                                    .withValues(alpha: .6),
+                                fontSize: 14,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 11,
+                              ),
+                              filled: true,
+                              fillColor: isDark
+                                  ? const Color(0xFF151B30)
+                                  : Colors.white.withValues(alpha: .54),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(22),
+                                borderSide: BorderSide(
+                                  color: isDark
+                                      ? const Color(
+                                          0xFF9CA9D8,
+                                        ).withValues(alpha: .22)
+                                      : Colors.white.withValues(alpha: .78),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(22),
+                                borderSide: BorderSide(
+                                  color: isDark
+                                      ? const Color(
+                                          0xFF9CA9D8,
+                                        ).withValues(alpha: .22)
+                                      : Colors.white.withValues(alpha: .78),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(22),
+                                borderSide: const BorderSide(
+                                  color: ChatatanColors.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        // Tombol Kirim Balasan
+                        ChatatanGlass(
+                          radius: 22,
+                          opacity: .72,
+                          padding: const EdgeInsets.all(10),
+                          onTap: _sendReply,
+                          child: const Icon(
+                            Icons.send_rounded,
+                            color: ChatatanColors.primary,
+                            size: 22,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
