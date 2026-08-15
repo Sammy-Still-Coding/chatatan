@@ -472,19 +472,25 @@ Future<void> _loadRoomInfo() async {
   /// Lampiran chat selalu diambil dari Library agar file dan preview konsisten.
   Future<void> _pickAndSendFile() async {
     if (_isUploading) return;
-
     setState(() => _isUploading = true);
 
     try {
       final attachment = await pickLibraryAttachment(context);
       if (attachment == null) return;
+
+      // Duplikat atau pindahkan referensi file dari Library ke Storage Chat
+      final chatFileLocator = await _dbHelper.copyLibraryAttachmentToChat(
+        _convIdInt, 
+        attachment.locator,
+      );
+
       final messageType = attachment.isImage ? 'IMAGE' : 'FILE';
 
       await _supabase.from('messages').insert({
         'conversation_id': _convIdInt,
         'sender_id': currentUserId,
         'message_type': messageType,
-        'content': attachment.locator,
+        'content': chatFileLocator, // Gunakan path lokasi chat baru
         'status': 'SENT',
       });
 
@@ -496,9 +502,9 @@ Future<void> _loadRoomInfo() async {
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Gagal mengunggah file: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal mengirim file: $e')),
+        );
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);

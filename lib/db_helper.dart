@@ -2270,4 +2270,50 @@ class DbHelper {
       return {};
     }
   }
+  Future<String> copyLibraryAttachmentToChat(int conversationId, String oldLocator) async {
+    // 1. Bersihkan path dari prefix locator ('library://'), slash di awal,
+    //    atau prefix nama bucket jika ada. Locator dari Library selalu diawali
+    //    'library://' (lihat LibraryAttachment.locator), jadi ini WAJIB dilepas
+    //    dulu sebelum path-nya dipakai buat download dari Storage.
+    String cleanLocator = oldLocator.replaceFirst(RegExp(r'^/'), '');
+    if (cleanLocator.startsWith('library://')) {
+      cleanLocator = cleanLocator.replaceFirst('library://', '');
+    }
+    if (cleanLocator.startsWith('chatatan-files/')) {
+      cleanLocator = cleanLocator.replaceFirst('chatatan-files/', '');
+    }
+
+    final fileName = cleanLocator.split('/').last;
+
+    // 2. Unduh byte file dari bucket LIBRARY asal (chatatan-files, tempat file
+    //    aslinya disimpan saat upload ke Library)
+    final Uint8List fileBytes = await _client
+        .storage
+        .from('chatatan-files') // Pastikan file asal memang ada di bucket ini
+        .download(cleanLocator);
+
+    // 3. Tentukan path baru di folder chats, di bucket CHAT (chat-files) --
+    //    BUKAN chatatan-files lagi. Bucket chatatan-files punya RLS INSERT
+    //    yang scoped khusus untuk "file Library milik sendiri", jadi menulis
+    //    path baru 'chats/...' ke situ selalu ditolak (403 Unauthorized).
+    //    chat-files sudah terbukti bisa ditulis siapa saja yang login (dipakai
+    //    juga oleh uploadChatAttachment), jadi lebih aman dipakai di sini.
+    final newPath = 'chats/$conversationId/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+
+    // 4. Unggah file byte tersebut ke bucket chat-files
+    await _client
+        .storage
+        .from('chat-files')
+        .uploadBinary(
+          newPath, 
+          fileBytes,
+          fileOptions: const FileOptions(upsert: true),
+        );
+
+    // 5. chat-files bersifat publik (sama seperti uploadChatAttachment),
+    //    jadi cukup pakai public URL, tidak perlu signed URL lagi.
+    final publicUrl = _client.storage.from('chat-files').getPublicUrl(newPath);
+
+    return publicUrl;
+  }
 }
