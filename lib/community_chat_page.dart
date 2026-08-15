@@ -482,6 +482,7 @@ Future<void> _loadRoomInfo() async {
       final chatFileLocator = await _dbHelper.copyLibraryAttachmentToChat(
         _convIdInt, 
         attachment.locator,
+        originalFileName: attachment.title,
       );
 
       final messageType = attachment.isImage ? 'IMAGE' : 'FILE';
@@ -528,6 +529,7 @@ Future<void> _loadRoomInfo() async {
       final imageLocator = await _dbHelper.uploadChatAttachment(
         _convIdInt,
         File(image.path),
+        originalFileName: image.name,
       );
 
       await _supabase.from('messages').insert({
@@ -572,7 +574,11 @@ Future<void> _loadRoomInfo() async {
       setState(() => _isUploading = true);
 
       // Menggunakan fungsi upload chat yang aman dan benar
-      final fileLocator = await _dbHelper.uploadChatAttachment(_convIdInt, File(filePath)); 
+      final fileLocator = await _dbHelper.uploadChatAttachment(
+        _convIdInt,
+        File(filePath),
+        originalFileName: result.files.single.name,
+      ); 
 
       final extension = result.files.single.extension?.toLowerCase() ?? '';
       final isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension);

@@ -2129,7 +2129,11 @@ class DbHelper {
   // UPLOAD LAMPIRAN CHAT
   // ============================================================
   
-  Future<String> uploadChatAttachment(int conversationId, File file) async {
+  Future<String> uploadChatAttachment(
+    int conversationId,
+    File file, {
+    String? originalFileName,
+  }) async {
     final user = currentUser;
     if (user == null) throw Exception('User belum login.');
 
@@ -2140,9 +2144,16 @@ class DbHelper {
     if (extension == 'jpeg') extension = 'jpg';
     if (extension.isEmpty) throw Exception('Ekstensi file tidak ditemukan.');
 
+    // Pakai nama file asli (kalau dikirim pemanggilnya) supaya nama yang
+    // tampil di chat bukan UUID acak -- konsisten dengan copyLibraryAttachmentToChat.
+    final sanitizedName =
+        (originalFileName != null && originalFileName.trim().isNotEmpty)
+        ? originalFileName.trim().replaceAll(RegExp(r'[\/\\]'), '-')
+        : '${const Uuid().v4()}.$extension';
+
     // Path khusus penyimpanan chat
-    final fileUuid = const Uuid().v4();
-    final storagePath = 'chats/$conversationId/$fileUuid.$extension';
+    final storagePath =
+        'chats/$conversationId/${DateTime.now().millisecondsSinceEpoch}_$sanitizedName';
     final mimeType = _getMimeType(extension);
 
     // Upload langsung ke bucket chat-files
@@ -2270,7 +2281,11 @@ class DbHelper {
       return {};
     }
   }
-  Future<String> copyLibraryAttachmentToChat(int conversationId, String oldLocator) async {
+  Future<String> copyLibraryAttachmentToChat(
+    int conversationId,
+    String oldLocator, {
+    String? originalFileName,
+  }) async {
     // 1. Bersihkan path dari prefix locator ('library://'), slash di awal,
     //    atau prefix nama bucket jika ada. Locator dari Library selalu diawali
     //    'library://' (lihat LibraryAttachment.locator), jadi ini WAJIB dilepas
@@ -2298,7 +2313,15 @@ class DbHelper {
     //    path baru 'chats/...' ke situ selalu ditolak (403 Unauthorized).
     //    chat-files sudah terbukti bisa ditulis siapa saja yang login (dipakai
     //    juga oleh uploadChatAttachment), jadi lebih aman dipakai di sini.
-    final newPath = 'chats/$conversationId/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+    // Pakai nama asli file (dari Library) kalau tersedia, supaya yang muncul
+    // di chat adalah nama yang manusia bisa baca -- bukan nama UUID storage.
+    // Kalau originalFileName tidak dikirim, tetap fallback ke nama lama.
+    final sanitizedName =
+        (originalFileName != null && originalFileName.trim().isNotEmpty)
+        ? originalFileName.trim().replaceAll(RegExp(r'[\/\\]'), '-')
+        : fileName;
+
+    final newPath = 'chats/$conversationId/${DateTime.now().millisecondsSinceEpoch}_$sanitizedName';
 
     // 4. Unggah file byte tersebut ke bucket chat-files
     await _client
