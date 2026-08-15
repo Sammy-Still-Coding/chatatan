@@ -2145,14 +2145,18 @@ class DbHelper {
     final storagePath = 'chats/$conversationId/$fileUuid.$extension';
     final mimeType = _getMimeType(extension);
 
-    // Upload langsung ke bucket chat-files (bukan chatatan-files)
+    // Upload langsung ke bucket chat-files
     await _client.storage.from('chat-files').uploadBinary(
           storagePath,
           bytes,
           fileOptions: FileOptions(contentType: mimeType, upsert: false),
         );
 
-    return 'chat-files://$storagePath';
+    // --- BAGIAN YANG DIUBAH ---
+    // Gunakan getPublicUrl untuk mendapatkan link https:// asli
+    final publicUrl = _client.storage.from('chat-files').getPublicUrl(storagePath);
+    
+    return publicUrl; 
   }
 
   // ============================================================
